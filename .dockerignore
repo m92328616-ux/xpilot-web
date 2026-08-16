@@ -1,0 +1,8 @@
+tests/
+*.md
+*.bak
+cert.pem
+key.pem
+__pycache__/
+*.pyc
+.git/
