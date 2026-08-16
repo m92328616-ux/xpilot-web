@@ -1,0 +1,5 @@
+# Runtime dependencies for the two servers that actually run in production
+# (web-server.py, ws_server.py). Deliberately separate from requirements.txt,
+# which also lists pygame for the desktop client (xpilot.py) -- pygame needs
+# SDL system libraries and isn't used by anything in the container image.
+websockets>=12,<13

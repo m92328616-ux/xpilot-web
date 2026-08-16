@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-server
+  namespace: xpilot
+  labels:
+    app: xpilot
+    component: web-server
+spec:
+  selector:
+    app: xpilot
+    component: web-server
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
