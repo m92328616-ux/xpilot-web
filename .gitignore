@@ -1,0 +1,52 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# --- Node / JS tooling ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+
+# --- TLS certs generated at runtime (web-server.py --https) ---
+cert.pem
+key.pem
+*.pem
+*.key
+
+# --- Editor / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+
+# --- Backups / scratch files ---
+*.bak
+*.orig
+*.tmp
+
+# --- Local env / secrets ---
+.env
+.env.*
+
+# --- kustomize scratch (if anyone runs `kustomize edit` locally and forgets to revert) ---
+k8s/kustomization.yaml.bak
