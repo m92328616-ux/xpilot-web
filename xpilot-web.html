@@ -1,0 +1,2567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>XPilot - Web</title>
+    <style>
+        :root {
+            --hud-font: 14px;
+            --minimap-w: 150;
+            --minimap-h: 113;
+            --minimap-label-font: 10px;
+            --chip-font: 12px;
+            --toast-font: 15px;
+            --btn-size: 36px;
+            --btn-font: 18px;
+            --ctrl-h: 120px;
+            --joystick-size: 100px;
+            --ctrl-btn-w: 90px;
+            --ctrl-btn-h: 40px;
+            --ctrl-btn-font: 12px;
+            --effects-bottom: 130px;
+            --pm-btn-pad: 12px;
+            --pm-btn-font: 14px;
+            --pm-resume-font: 17px;
+            --s-btn-pad: 7px 18px;
+            --s-btn-font: 13px;
+            --upg-buy-pad: 5px 14px;
+            --upg-buy-font: 12px;
+            --m-btn-pad: 6px 16px;
+            --m-btn-font: 13px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        body { font-family: Arial, sans-serif; background: #0c0c18; }
+        #gameContainer { position: fixed; inset: 0; background: #0c0c18; touch-action: none; }
+        canvas { display: block; width: 100%; height: 100%; }
+        #info { position: absolute; top: 10px; right: 10px; color: #c8c8c8; font-size: var(--hud-font); font-family: monospace; z-index: 100; pointer-events: none; text-align: right; line-height: 1.6; }
+        #deadMsg { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #dcdcdc; font-size: 18px; text-align: center; background: rgba(0,0,0,0.75); padding: 20px; border-radius: 5px; z-index: 200; pointer-events: none; display: none; }
+        #minimapWrap { position: absolute; top: 10px; left: 10px; z-index: 100; pointer-events: none; background: rgba(0,0,0,0.5); border: 1px solid #555; border-radius: 4px; padding: 3px; }
+        #minimap { display: block; border-radius: 2px; }
+        #minimapLabel { font-family: monospace; font-size: var(--minimap-label-font); color: #888; text-align: center; margin-top: 2px; }
+        #effectsBar { position: absolute; bottom: var(--effects-bottom); left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 110; pointer-events: none; flex-wrap: wrap; justify-content: center; max-width: 90vw; }
+        .eff-chip { padding: 3px 9px; border-radius: 20px; font-family: monospace; font-size: var(--chip-font); font-weight: bold; border: 1px solid rgba(255,255,255,0.25); white-space: nowrap; }
+        #toastStack { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 300; pointer-events: none; }
+        .toast { padding: 7px 18px; border-radius: 6px; font-family: monospace; font-size: var(--toast-font); font-weight: bold; border: 1px solid rgba(255,255,255,0.3); background: rgba(10,10,30,0.85); text-align: center; white-space: nowrap; }
+
+        /* ── Inline chat / log (issue #37) ──
+           Chat messages are part of the gameplay: no box, no header. The
+           overlay fades out after a configurable period of inactivity and
+           reappears whenever new activity occurs. Readability over any
+           map/background comes from the text shadow, not a solid box. */
+        #inlineChat {
+            position: absolute; left: 12px; bottom: 16px;
+            width: min(430px, 68vw);
+            display: flex; flex-direction: column; gap: 3px;
+            z-index: 130; pointer-events: none;
+            opacity: 0;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.8);
+        }
+        #inlineChatList {
+            display: flex; flex-direction: column; gap: 2px;
+            font-family: monospace; font-size: 12px; line-height: 1.45;
+        }
+        .gl-row { display: flex; align-items: baseline; gap: 6px; }
+        .gl-time { color: #9aa2c8; font-size: 10px; flex-shrink: 0; }
+        .gl-icon { flex-shrink: 0; }
+        .gl-text { color: #eef0ff; word-break: break-word; }
+        #chatInput {
+            pointer-events: auto; margin-top: 3px; width: 100%; box-sizing: border-box;
+            padding: 6px 10px; font-family: monospace; font-size: 13px;
+            background: rgba(10,10,28,0.75); color: #e8e8f0;
+            border: 1px solid rgba(90,90,150,0.5); border-radius: 5px; outline: none;
+        }
+        #chatInput:focus { border-color: #6080ff; }
+        #chatInput::placeholder { color: #8a92b8; }
+
+        /* ── Top buttons (symmetric trio) ── */
+        #topBtnGroup { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 110; }
+        .top-btn { position: relative; z-index: 110; pointer-events: auto; background: rgba(30,30,50,0.85); border: 1px solid #555; color: #bbb; width: var(--btn-size); height: var(--btn-size); border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: background 0.15s, color 0.15s; }
+        .top-btn:hover { background: rgba(80,80,120,0.9); color: #fff; }
+        #settingsBtn { font-size: var(--btn-font); }
+        #menuBtn     { font-size: calc(var(--btn-font) - 1px); }
+        #pauseBtn    { font-size: calc(var(--btn-font) - 2px); }
+
+        /* ── Pause overlay ── */
+        #pauseOverlay { display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.62); backdrop-filter: blur(6px); align-items: center; justify-content: center; }
+        #pauseOverlay.open { display: flex; }
+        #pauseMenu { background: #0e0e20; border: 1px solid #3a3a6a; border-radius: 12px; padding: 38px 48px 30px; text-align: center; color: #d0d0e8; font-family: monospace; min-width: 280px; box-shadow: 0 0 60px rgba(60,80,200,0.18); }
+        #pauseMenu h1 { font-size: 30px; color: #a0b0ff; letter-spacing: 5px; text-transform: uppercase; margin-bottom: 6px; text-shadow: 0 0 20px rgba(140,160,255,0.4); }
+        #pauseMenu .pause-score { font-size: 13px; color: #5060a0; margin-bottom: 30px; }
+        #pauseMenu .pause-hint { font-size: 11px; color: #383858; margin-top: 16px; line-height: 1.7; }
+        .pm-btn { display: block; width: 100%; padding: var(--pm-btn-pad); margin-bottom: 10px; background: #1a1a38; border: 1px solid #4a4a8a; color: #a0b0ff; border-radius: 6px; cursor: pointer; font-family: monospace; font-size: var(--pm-btn-font); transition: background 0.15s, color 0.15s; }
+        .pm-btn:hover { background: #252550; color: #fff; }
+        .pm-btn.pm-resume { background: #1e3060; border-color: #4060c0; font-size: var(--pm-resume-font); font-weight: bold; letter-spacing: 2px; margin-bottom: 16px; }
+        .pm-btn.pm-resume:hover { background: #2a4080; }
+
+        /* ── Menu overlay (shop + profile) ── */
+        #menuOverlay { display: none; position: fixed; inset: 0; z-index: 500; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+        #menuOverlay.open { display: flex; }
+        #menuPanel { background: #14142a; border: 1px solid #3a3a6a; border-radius: 10px; padding: 24px 28px; width: min(480px,94vw); max-height: 90vh; overflow-y: auto; color: #d0d0e8; font-family: monospace; position: relative; }
+        #menuPanel h2 { font-size: 17px; color: #a0b0ff; margin-bottom: 18px; letter-spacing: 1px; text-transform: uppercase; }
+        .m-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: #888; font-size: 22px; cursor: pointer; line-height: 1; }
+        .m-close:hover { color: #fff; }
+        .m-section { font-size: 11px; color: #6070a0; letter-spacing: 1px; text-transform: uppercase; margin: 18px 0 10px; border-bottom: 1px solid #2a2a50; padding-bottom: 4px; }
+        .m-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+        .m-row label { font-size: 13px; color: #b0b8d8; flex: 0 0 50px; }
+        .m-row input[type=text] { flex: 1; background: #0e0e22; border: 1px solid #3a3a6a; color: #d0d0f0; padding: 6px 9px; border-radius: 4px; font-family: monospace; font-size: 13px; }
+        .m-row input[type=text]:focus { outline: none; border-color: #6080ff; }
+        .m-btn { padding: var(--m-btn-pad); background: #2a2a5a; border: 1px solid #4a4a8a; color: #a0b0ff; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: var(--m-btn-font); }
+        .m-btn:hover { background: #3a3a7a; color: #fff; }
+        /* Score display in menu */
+        #shopScoreRow { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; padding: 8px 12px; background: rgba(40,40,80,0.4); border-radius: 6px; border: 1px solid #2a2a50; }
+        #shopScoreRow span:first-child { font-size: 12px; color: #6070a0; }
+        #shopScoreVal { font-size: 16px; color: #d0c060; font-weight: bold; }
+        /* Upgrade rows */
+        .upg-row { display: flex; align-items: center; gap: 12px; padding: 10px 8px; border-bottom: 1px solid #1e1e3a; border-radius: 4px; transition: background 0.1s; }
+        .upg-row:hover { background: rgba(40,40,70,0.4); }
+        .upg-icon { font-size: 22px; width: 30px; text-align: center; flex-shrink: 0; }
+        .upg-info { flex: 1; min-width: 0; }
+        .upg-name { font-size: 13px; color: #c0c8e8; font-weight: bold; }
+        .upg-desc { font-size: 11px; color: #5060a0; margin-top: 1px; }
+        .upg-price { font-size: 12px; color: #8090b0; white-space: nowrap; flex-shrink: 0; }
+        .upg-buy { padding: var(--upg-buy-pad); background: #1e3060; border: 1px solid #4060c0; color: #a0b0ff; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: var(--upg-buy-font); white-space: nowrap; flex-shrink: 0; transition: background 0.15s; }
+        .upg-buy:hover:not(:disabled) { background: #2a4080; color: #fff; }
+        .upg-buy:disabled { background: #14142a; border-color: #2a2a50; color: #404060; cursor: not-allowed; }
+        .upg-buy.owned { background: #0e2818; border-color: #2a5a34; color: #50a060; cursor: default; }
+
+        /* ── Settings overlay ── */
+        #settingsOverlay { display: none; position: fixed; inset: 0; z-index: 600; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+        #settingsOverlay.open { display: flex; }
+        #settingsPanel { background: #14142a; border: 1px solid #3a3a6a; border-radius: 10px; padding: 24px 28px; width: min(440px,94vw); max-height: 90vh; overflow-y: auto; color: #d0d0e8; font-family: monospace; position: relative; }
+        #settingsPanel h2 { font-size: 17px; color: #a0b0ff; margin-bottom: 18px; letter-spacing: 1px; text-transform: uppercase; }
+        .s-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: #888; font-size: 22px; cursor: pointer; line-height: 1; }
+        .s-close:hover { color: #fff; }
+        .s-section { font-size: 11px; color: #6070a0; letter-spacing: 1px; text-transform: uppercase; margin: 18px 0 8px; border-bottom: 1px solid #2a2a50; padding-bottom: 4px; }
+        .s-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+        .s-row label { font-size: 13px; color: #b0b8d8; flex: 1; }
+        .s-row .s-val { font-size: 12px; color: #7080c0; min-width: 48px; text-align: right; }
+        .s-row input[type=range] { flex: 2; accent-color: #6080ff; height: 4px; cursor: pointer; }
+        .s-row select { flex: 2; background: #0e0e22; border: 1px solid #3a3a6a; color: #d0d0f0; padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 13px; cursor: pointer; }
+        .s-btn { padding: var(--s-btn-pad); background: #2a2a5a; border: 1px solid #4a4a8a; color: #a0b0ff; border-radius: 5px; cursor: pointer; font-family: monospace; font-size: var(--s-btn-font); }
+        .s-btn:hover { background: #3a3a7a; color: #fff; }
+        .s-btn.primary { background: #304090; border-color: #6080ff; }
+        .s-btn.primary:hover { background: #405098; }
+        #zoomDisplay { font-size: 11px; color: #6070a0; text-align: center; margin-top: 4px; }
+
+        /* ── Touch controls ── */
+        #controls { position: absolute; bottom: 0; left: 0; right: 0; height: var(--ctrl-h); display: flex; justify-content: space-between; padding: 10px; gap: 10px; pointer-events: none; }
+        .joystick-area { width: var(--joystick-size); height: var(--joystick-size); background: rgba(100,100,150,0.3); border: 2px solid #666; border-radius: 50%; pointer-events: auto; }
+        .buttons-area { display: flex; flex-direction: column; gap: 5px; pointer-events: auto; }
+        .control-btn { width: var(--ctrl-btn-w); height: var(--ctrl-btn-h); background: rgba(100,150,100,0.3); border: 2px solid #666; color: #aaa; font-size: var(--ctrl-btn-font); border-radius: 5px; touch-action: none; user-select: none; display: flex; align-items: center; justify-content: center; }
+        .control-btn.shoot { flex: 1; width: var(--ctrl-btn-w); height: auto; min-height: 50px; }
+
+        /* ── UI Layout Edit Mode ── */
+        .ui-editing #topBtnGroup,
+        .ui-editing #minimapWrap,
+        .ui-editing #info,
+        .ui-editing #controls {
+            outline: 2px dashed rgba(96,128,255,0.6) !important;
+            outline-offset: 4px;
+            cursor: grab;
+            transition: outline-color 0.2s;
+            pointer-events: auto !important;
+            user-select: none !important;
+        }
+        .ui-editing #topBtnGroup:hover,
+        .ui-editing #minimapWrap:hover,
+        .ui-editing #info:hover,
+        .ui-editing #controls:hover {
+            outline-color: rgba(96,128,255,1) !important;
+        }
+        .ui-edit-label {
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 10px;
+            font-family: monospace;
+            color: #6080ff;
+            background: rgba(10,10,30,0.85);
+            padding: 1px 6px;
+            border-radius: 3px;
+            white-space: nowrap;
+            pointer-events: none;
+            display: none;
+        }
+        .ui-editing .ui-edit-label { display: block; }
+
+        /* ── Edit Layout Toolbar ── */
+        #editLayoutToolbar {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 700;
+            background: rgba(10,10,30,0.94);
+            border-bottom: 1px solid #4a4a8a;
+            padding: 10px 20px;
+            font-family: monospace;
+            color: #d0d0e8;
+            align-items: center;
+            gap: 14px;
+            backdrop-filter: blur(6px);
+        }
+        #editLayoutToolbar.open { display: flex; flex-wrap: wrap; }
+        #editLayoutToolbar .tb-label { font-size: 11px; color: #6070a0; letter-spacing: 1px; text-transform: uppercase; }
+        #editLayoutToolbar .tb-hint { font-size: 10px; color: #404870; }
+        #editLayoutToolbar .tb-btn {
+            padding: 6px 16px;
+            border: 1px solid #4a4a8a;
+            background: #2a2a5a;
+            color: #a0b0ff;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        #editLayoutToolbar .tb-btn:hover { background: #3a3a7a; color: #fff; }
+        #editLayoutToolbar .tb-btn.save { background: #1e3060; border-color: #4060c0; }
+        #editLayoutToolbar .tb-btn.save:hover { background: #2a4080; }
+        #editLayoutToolbar .tb-btn.cancel { background: #301820; border-color: #804040; color: #d08080; }
+        #editLayoutToolbar .tb-btn.cancel:hover { background: #401828; }
+        #editLayoutToolbar input[type=range] { width: 100px; accent-color: #6080ff; }
+        #editLayoutToolbar .scale-val { font-size: 12px; color: #7080c0; min-width: 36px; }
+        .ui-editing .ui-edit-label {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+<div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    <div id="minimapWrap">
+        <div class="ui-edit-label">Minimap</div>
+        <canvas id="minimap" width="150" height="113"></canvas>
+        <div id="minimapLabel">minimap</div>
+    </div>
+    <div id="info">
+        <div class="ui-edit-label">HUD</div>
+        Score: <span id="score">0</span><br>
+        HP: <span id="hpValue">3/3</span><br>
+        <div id="hpBar" style="width:100px;height:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.18);border-radius:999px;overflow:hidden;margin:2px 0 2px;"><div id="hpBarFill" style="height:100%;width:100%;background:#6ad2ff;transition:width 0.15s ease, background 0.15s ease;"></div></div>
+        Fuel: <span id="fuelValue">100/100</span><br>
+        <div id="fuelBar" style="width:100px;height:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.18);border-radius:999px;overflow:hidden;margin:4px 0 6px;"><div id="fuelBarFill" style="height:100%;width:100%;background:#6affc7;transition:width 0.15s ease, background 0.15s ease;"></div></div>
+        <span style="color:#c87878">● circle</span> 10pts&nbsp;
+        <span style="color:#f0a050">▲ shooter</span> 20pts&nbsp;
+        <span style="color:#b07fe0">■ tank</span> 50pts<br>
+        <span id="connStatus" style="color:#888">Offline (single player)</span><span id="roleTag" style="font-size:11px"></span>
+        <span id="playerCount"></span><br>
+        <div style="margin-top:6px;font-size:13px;color:#9aa2c8">Difficulty: <span id="difficultyLabel">Normal</span></div>
+        <span id="zoomHud" style="color:#6070a0;font-size:11px"></span>
+    </div>
+    <div id="effectsBar"></div>
+    <div id="toastStack"></div>
+
+    <!-- Inline chat / log (issue #37): messages and input live inside the
+         game view as an inline overlay that fades out when inactive. -->
+    <div id="inlineChat">
+        <div id="inlineChatList"></div>
+        <input id="chatInput" type="text" maxlength="240" placeholder="Chat (T) — press Enter to send" autocomplete="off">
+    </div>
+
+    <!-- Top buttons -->
+    <div id="topBtnGroup">
+        <div class="ui-edit-label">Top Buttons</div>
+        <button class="top-btn" id="settingsBtn" title="Settings (pauses game)">⚙</button>
+        <button class="top-btn" id="menuBtn" title="Menu / Shop (M)">☰</button>
+        <button class="top-btn" id="pauseBtn" title="Pause (P)">⏸</button>
+    </div>
+
+    <!-- Pause overlay -->
+    <div id="pauseOverlay">
+        <div id="pauseMenu">
+            <h1>⏸ Paused</h1>
+            <div class="pause-score">Score: <span id="pauseScore">0</span></div>
+            <button class="pm-btn pm-resume" id="pmResume">▶ Resume</button>
+            <button class="pm-btn" id="pmMenu">☰ Menu &amp; Shop</button>
+            <button class="pm-btn" id="pmSettings">⚙ Settings</button>
+            <button class="pm-btn" id="pmRestart">↺ Restart</button>
+            <div class="pause-hint">P or Escape to resume · M for menu · R to restart</div>
+        </div>
+    </div>
+
+    <div id="deadMsg">You Died<br>Press R to restart</div>
+
+    <!-- Menu overlay (profile + shop) -->
+    <div id="menuOverlay">
+        <div id="menuPanel">
+            <button class="m-close" id="menuClose">✕</button>
+            <h2>☰ Menu</h2>
+
+            <div class="m-section">Profile</div>
+            <div class="m-row">
+                <label>Name</label>
+                <input type="text" id="mName" maxlength="20" placeholder="Pilot name">
+                <button class="m-btn" id="mNameApply">Apply</button>
+            </div>
+
+            <div class="m-section">Game Mode</div>
+            <div class="m-row">
+                <label>PvP (player vs player)</label>
+                <input type="checkbox" id="mPvp">
+            </div>
+            <div style="margin-top:6px;font-size:11px;color:#383858;line-height:1.6">
+                PvP lets players damage each other — bullets and ramming reduce
+                a pilot's 3 HP, and every pilot spawns at a fair distance from
+                the centre. Last pilot alive wins!
+            </div>
+
+            <div class="m-section">Upgrades Shop</div>
+            <div id="shopScoreRow">
+                <span>Available score</span>
+                <span id="shopScoreVal">0</span>
+            </div>
+            <!-- Upgrades injected by JS -->
+            <div id="upgradeList"></div>
+
+            <div style="margin-top:18px;font-size:11px;color:#383858;text-align:center;line-height:1.7">
+                Upgrades are permanent until you die.<br>
+                Lost on restart — spend wisely!
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings overlay -->
+    <div id="settingsOverlay">
+        <div id="settingsPanel">
+            <button class="s-close" id="settingsClose">✕</button>
+            <h2>⚙ Settings</h2>
+            <div class="s-section">Controls</div>
+            <div class="s-row"><label>Turn mode</label><select id="sTurnMode"><option value="keyboard">Keyboard / Touch</option><option value="mouse">Mouse follow</option></select></div>
+            <div class="s-row"><label>Turn sensitivity</label><input type="range" id="sSens" min="0.5" max="8" step="0.1" value="3"><span class="s-val" id="sSensVal">3.0</span></div>
+            <div class="s-section">View</div>
+            <div class="s-row"><label>Zoom / FOV</label><input type="range" id="sZoom" min="0.25" max="3" step="0.05" value="1"><span class="s-val" id="sZoomVal">1.0×</span></div>
+            <div id="zoomDisplay">Scroll wheel also adjusts zoom in-game</div>
+            <div class="s-section">Performance</div>
+            <div class="s-row"><label>FPS cap</label><input type="range" id="sFps" min="15" max="240" step="5" value="60"><span class="s-val" id="sFpsVal">60</span></div>
+            <div class="s-row"><label>Unlimited FPS</label><select id="sFpsUnlimit"><option value="0">Off</option><option value="1">On</option></select></div>
+            <div class="s-section">Button Layout</div>
+            <div class="s-row"><label>Customize positions</label><button class="s-btn" id="sEditLayout">Edit Layout</button></div>
+            <div class="s-row"><label>UI Scale</label><input type="range" id="sGlobalScale" min="0.5" max="2.0" step="0.05" value="1.0"><span class="s-val" id="sGlobalScaleVal">1.0×</span></div>
+            <div class="s-section">Chat / Log</div>
+            <div class="s-section">Gameplay</div>
+            <div class="s-row"><label>Difficulty</label><select id="sDifficulty"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></div>
+            <div class="s-row"><label>Auto-hide chat</label><select id="sLogAutoHide"><option value="1">On</option><option value="0">Off (always visible)</option></select></div>
+            <div class="s-row"><label>Hide after</label><input type="range" id="sLogTimeout" min="2" max="30" step="1" value="6"><span class="s-val" id="sLogTimeoutVal">6s</span></div>
+            <div class="s-row"><label>Fade duration</label><input type="range" id="sLogFade" min="0.1" max="2" step="0.1" value="0.4"><span class="s-val" id="sLogFadeVal">0.4s</span></div>
+            <div class="s-row"><label>Timestamps</label><select id="sLogTime"><option value="1">On</option><option value="0">Off</option></select></div>
+            <div class="s-row"><label>Max messages</label><input type="range" id="sLogMax" min="20" max="200" step="10" value="60"><span class="s-val" id="sLogMaxVal">60</span></div>
+            <br>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+                <button class="s-btn" id="sReset">Reset defaults</button>
+                <button class="s-btn primary" id="sApply">Apply &amp; close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div class="ui-edit-label">Touch Controls</div>
+        <div class="joystick-area" id="joystick"></div>
+        <div class="buttons-area">
+            <button class="control-btn" id="thrustBtn">Thrust</button>
+            <button class="control-btn shoot" id="shootBtn">SHOOT</button>
+            <button class="control-btn" id="restartBtn" style="display:none;">Restart</button>
+        </div>
+    </div>
+
+    <!-- Edit Layout Toolbar -->
+    <div id="editLayoutToolbar">
+        <span class="tb-label">UI Edit Mode</span>
+        <span class="tb-hint">Drag elements to reposition</span>
+        <span class="tb-label" style="margin-left:12px">Scale</span>
+        <input type="range" id="editScaleSlider" min="0.5" max="2.0" step="0.05" value="1.0">
+        <span class="scale-val" id="editScaleVal">1.0×</span>
+        <button class="tb-btn" id="editResetBtn">Reset</button>
+        <button class="tb-btn cancel" id="editCancelBtn">Cancel</button>
+        <button class="tb-btn save" id="editSaveBtn">Save</button>
+    </div>
+</div>
+<script src="./pickup-system.js"></script>
+<script src="./fuel-system.js"></script>
+<script src="./pvp-system.js"></script>
+<script src="./game-log.js"></script>
+<script>
+// ── World ──────────────────────────────────────────────────────────────────
+const WORLD_W = 3200, WORLD_H = 2400;
+
+// ── Settings ───────────────────────────────────────────────────────────────
+const DEFAULTS = { sensitivity:3.0, turnMode:'keyboard', zoom:1.0, fpsCap:60, unlimitFps:false };
+let sensitivity=DEFAULTS.sensitivity, turnMode=DEFAULTS.turnMode, zoomLevel=DEFAULTS.zoom,
+    fpsCap=DEFAULTS.fpsCap, unlimitFps=DEFAULTS.unlimitFps;
+
+const THRUST_POWER=200, BULLET_SPEED=400, SHOOT_COOL_BASE=0.12;
+const FUEL_MAX=500, FUEL_REGEN_RATE=40, FUEL_IDLE_DELAY=0;
+const FUEL_COST_THRUST=2, FUEL_COST_SHOOT=1, FUEL_COST_LASER=0.4;
+const FUEL_CELL_EXPLOSION_DELAY=1.4;
+const BASE_VIEW_W=800;
+let viewW=BASE_VIEW_W, viewH=600;
+// Difficulty multiplier: mutable and persisted. Read URL ?difficulty= or localStorage 'xp_difficulty'
+let DIFFICULTY = (function(){
+    const urlVal = Number(new URLSearchParams(location.search).get('difficulty'));
+    if(isFinite(urlVal) && urlVal>0) return urlVal;
+    try{ const s = localStorage.getItem('xp_difficulty'); if(s) return Number(s); }catch(e){}
+    return 1.0;
+})();
+
+function difficultyLabelFor(v){ if(v<0.95) return 'easy'; if(v<1.15) return 'normal'; return 'hard'; }
+function difficultyMultiplierForLabel(l){ if(l==='easy') return 0.8; if(l==='hard') return 1.25; return 1.0; }
+function setDifficulty(labelOrMult, save=true){
+    let mult = typeof labelOrMult === 'string' ? difficultyMultiplierForLabel(labelOrMult) : Number(labelOrMult);
+    if(!isFinite(mult) || mult<=0) mult = 1.0;
+    DIFFICULTY = mult;
+    try{ if(save){ localStorage.setItem('xp_difficulty', String(DIFFICULTY)); localStorage.setItem('xp_difficulty_label', difficultyLabelFor(DIFFICULTY)); } }catch(e){}
+    // Update existing entities to reflect new difficulty (use baseHp if present)
+    if(Array.isArray(entities)){
+        for(const e of entities){
+            if(e && e.baseHp!==undefined){
+                const newMax = Math.max(1, Math.round(e.baseHp * DIFFICULTY));
+                // scale current hp down if above new max
+                e.maxHp = newMax;
+                if(e.hp > e.maxHp) e.hp = e.maxHp;
+            }
+        }
+    }
+    // update HUD label if present
+    const labelEl = document.getElementById('difficultyLabel');
+    if(labelEl) labelEl.textContent = difficultyLabelFor(DIFFICULTY).replace(/^./, s=>s.toUpperCase());
+}
+const MIN_ZOOM=0.25, MAX_ZOOM=3.0, ZOOM_STEP=0.1;
+function recalcView(){viewW=BASE_VIEW_W/zoomLevel;viewH=viewW*(canvas.height/canvas.width);}
+
+// ── Entity counts ──────────────────────────────────────────────────────────
+const N_CIRCLES=14, N_SHOOTERS=10, N_TANKS=10;
+
+// ── Pickups (temporary effects + fuel cells) ─────────────────────────────
+const POWERUP_DEFS={
+    shield:     {...PickupSystem.PICKUP_DEFS.shield, label:'🛡 Shield',    color:'#4488ff',bg:'rgba(30,60,200,0.25)', duration:30},
+    score_mult: {...PickupSystem.PICKUP_DEFS.score_mult, label:'🌟 2× Score',  color:'#ffcc00',bg:'rgba(180,140,0,0.25)', duration:18},
+    fuel_cell:  {...PickupSystem.PICKUP_DEFS.fuel_cell, label:'⛽ Fuel Cell', color:'#7ef0a0',bg:'rgba(40,180,120,0.25)'}
+};
+const POWERUP_KINDS=Object.keys(POWERUP_DEFS);
+const N_CUBES=80;
+const N_SHIELD_CUBES=5;
+const N_FUEL_CELLS=7;
+
+// ── Permanent upgrades (bought with score) ─────────────────────────────────
+const UPGRADES=[
+    {id:'rapid',      icon:'🔫', name:'Rapid Fire',     desc:'Fire rate ×1.8',            price:120},
+    {id:'triple',     icon:'🔱', name:'Triple Shot',    desc:'2 bullets per shot',        price:180},
+    {id:'big_bullet', icon:'💥', name:'Big Bullets',    desc:'Bullets 1.5× larger, ×1.5 dmg', price:280},
+    {id:'homing',     icon:'🎯', name:'Homing Bullets', desc:'Bullets seek nearest enemy', price:420},
+    {id:'laser',      icon:'🔴', name:'Laser',          desc:'Beam while firing, lower DPS', price:540},
+];
+let ownedUpgrades=new Set();
+let activeUpgrade=null;
+function isUpgradeOwned(id){ return ownedUpgrades.has(id); }
+function isUpgradeActive(id){ return activeUpgrade===id; }
+
+// ── Laser state ────────────────────────────────────────────────────────────
+const LASER_RANGE=420, LASER_DPS=7;
+let laserActive=false, laserEndX=0, laserEndY=0;
+
+// ── Multiplayer ────────────────────────────────────────────────────────────
+const MY_ID='p_'+Math.random().toString(36).slice(2,10);
+let myName='Pilot-'+MY_ID.slice(2,6);
+let remotePlayers={}, remoteBullets=[], ws=null, netState='offline';
+const STATE_SEND_HZ=15; let stateSendAccum=0; const REMOTE_TIMEOUT=8.0;
+let allKnownIds=new Set([MY_ID]), isHost=true;
+function reelectHost(){isHost=([...allKnownIds].sort()[0]===MY_ID);}
+const ENTITY_SEND_HZ=12; let entitySendAccum=0;
+// Server-authoritative pickups: when true, the relay server owns power-up
+// state (spawns, respawns, collection, damage) and the client only renders
+// what the server sends.
+let serverPickupsActive=false; let serverPickupSeq=0;
+const PICKUP_REQUEST_INTERVAL=0.25; let pickupRequestCooldowns={};
+
+// ── Canvas ─────────────────────────────────────────────────────────────────
+const canvas=document.getElementById('gameCanvas'), ctx=canvas.getContext('2d');
+const gc=document.getElementById('gameContainer');
+const mm=document.getElementById('minimap'), mctx=mm.getContext('2d');
+function resize(){const r=gc.getBoundingClientRect();canvas.width=r.width;canvas.height=r.height;recalcView();}
+resize(); window.addEventListener('resize',resize);
+function wrapDelta(a,b,size){let d=((b-a)%size+size)%size;if(d>size/2)d-=size;return d;}
+
+// ── Device configuration ──────────────────────────────────────────────────
+const DeviceConfig=(function(){
+    const profiles={
+        desktop:{
+            minimapW:180,minimapH:135,hudFont:'14px',minimapLabelFont:'10px',
+            chipFont:'12px',toastFont:'15px',btnSize:'36px',btnFont:'18px',
+            ctrlH:'120px',joystickSize:'100px',ctrlBtnW:'90px',ctrlBtnH:'40px',
+            ctrlBtnFont:'12px',effectsBottom:'130px',
+            pmBtnPad:'12px',pmBtnFont:'14px',pmResumeFont:'17px',
+            sBtnPad:'7px 18px',sBtnFont:'13px',
+            upgBuyPad:'5px 14px',upgBuyFont:'12px',
+            mBtnPad:'6px 16px',mBtnFont:'13px'
+        },
+        tablet:{
+            minimapW:160,minimapH:120,hudFont:'13px',minimapLabelFont:'9px',
+            chipFont:'11px',toastFont:'14px',btnSize:'42px',btnFont:'19px',
+            ctrlH:'130px',joystickSize:'110px',ctrlBtnW:'100px',ctrlBtnH:'48px',
+            ctrlBtnFont:'13px',effectsBottom:'140px',
+            pmBtnPad:'14px',pmBtnFont:'16px',pmResumeFont:'19px',
+            sBtnPad:'9px 20px',sBtnFont:'14px',
+            upgBuyPad:'7px 16px',upgBuyFont:'13px',
+            mBtnPad:'7px 18px',mBtnFont:'14px'
+        },
+        mobile:{
+            minimapW:110,minimapH:83,hudFont:'11px',minimapLabelFont:'8px',
+            chipFont:'10px',toastFont:'13px',btnSize:'44px',btnFont:'20px',
+            ctrlH:'140px',joystickSize:'110px',ctrlBtnW:'105px',ctrlBtnH:'52px',
+            ctrlBtnFont:'14px',effectsBottom:'150px',
+            pmBtnPad:'16px',pmBtnFont:'16px',pmResumeFont:'19px',
+            sBtnPad:'10px 22px',sBtnFont:'15px',
+            upgBuyPad:'8px 18px',upgBuyFont:'14px',
+            mBtnPad:'8px 20px',mBtnFont:'15px'
+        }
+    };
+    let current='desktop';
+    function detect(){
+        const w=Math.min(window.innerWidth,window.innerHeight);
+        const h=Math.max(window.innerWidth,window.innerHeight);
+        const ua=navigator.userAgent||'';
+        const isMobile=/Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)||('ontouchstart' in window&&w<=480);
+        const isTablet=/iPad|Android(?!.*Mobile)/i.test(ua)||(w>480&&w<=900&&('ontouchstart' in window||navigator.maxTouchPoints>1));
+        if(isMobile)return'mobile';
+        if(isTablet)return'tablet';
+        return'desktop';
+    }
+    function apply(){
+        current=detect();
+        const p=profiles[current];
+        const r=document.documentElement.style;
+        r.setProperty('--hud-font',p.hudFont);
+        r.setProperty('--minimap-label-font',p.minimapLabelFont);
+        r.setProperty('--chip-font',p.chipFont);
+        r.setProperty('--toast-font',p.toastFont);
+        r.setProperty('--btn-size',p.btnSize);
+        r.setProperty('--btn-font',p.btnFont);
+        r.setProperty('--ctrl-h',p.ctrlH);
+        r.setProperty('--joystick-size',p.joystickSize);
+        r.setProperty('--ctrl-btn-w',p.ctrlBtnW);
+        r.setProperty('--ctrl-btn-h',p.ctrlBtnH);
+        r.setProperty('--ctrl-btn-font',p.ctrlBtnFont);
+        r.setProperty('--effects-bottom',p.effectsBottom);
+        r.setProperty('--pm-btn-pad',p.pmBtnPad);
+        r.setProperty('--pm-btn-font',p.pmBtnFont);
+        r.setProperty('--pm-resume-font',p.pmResumeFont);
+        r.setProperty('--s-btn-pad',p.sBtnPad);
+        r.setProperty('--s-btn-font',p.sBtnFont);
+        r.setProperty('--upg-buy-pad',p.upgBuyPad);
+        r.setProperty('--upg-buy-font',p.upgBuyFont);
+        r.setProperty('--m-btn-pad',p.mBtnPad);
+        r.setProperty('--m-btn-font',p.mBtnFont);
+        mm.width=p.minimapW; mm.height=p.minimapH;
+    }
+    function getProfile(){return profiles[current];}
+    function getType(){return current;}
+    function registerProfile(name,def){profiles[name]=def;}
+    apply();
+    return{detect,apply,getProfile,getType,registerProfile};
+})();
+let _lastDeviceType=DeviceConfig.getType();
+function onDeviceLayoutChange(){
+    const t=DeviceConfig.getType();
+    if(t!==_lastDeviceType){_lastDeviceType=t;DeviceConfig.apply();}
+    else{DeviceConfig.apply();}
+}
+window.addEventListener('resize',onDeviceLayoutChange);
+window.addEventListener('orientationchange',()=>setTimeout(onDeviceLayoutChange,150));
+
+// ── Seeded RNG (deterministic map for all clients) ─────────────────────────
+function mkRng(seed){
+    let s=seed>>>0;
+    return()=>{s=(Math.imul(1664525,s)+1013904223)>>>0;return s/0x100000000;};
+}
+const mapRng=mkRng(0x58506c74);
+
+// ── Obstacle generation ────────────────────────────────────────────────────
+function genBlobPts(cx,cy,baseR,nPts,rand){
+    const angs=Array.from({length:nPts},(_,i)=>(i/nPts)*Math.PI*2+(rand()-0.5)*0.55).sort((a,b)=>a-b);
+    return angs.map(a=>{const r=baseR*(0.52+0.48*rand());return{x:cx+Math.cos(a)*r,y:cy+Math.sin(a)*r};});
+}
+function buildObstacles(){
+    const obs=[];
+    const SPAWN_CX=WORLD_W/2,SPAWN_CY=WORLD_H/2,CLEAR_R=380,MIN_SEP=300;
+    let attempts=0;
+    while(obs.length<18&&attempts<600){
+        attempts++;
+        const cx=120+mapRng()*(WORLD_W-240),cy=120+mapRng()*(WORLD_H-240);
+        if(Math.hypot(cx-SPAWN_CX,cy-SPAWN_CY)<CLEAR_R)continue;
+        let ok=true;
+        for(const o of obs){if(Math.hypot(cx-o.cx,cy-o.cy)<MIN_SEP){ok=false;break;}}
+        if(!ok)continue;
+        const baseR=80+mapRng()*130,nPts=8+Math.floor(mapRng()*6);
+        obs.push({pts:genBlobPts(cx,cy,baseR,nPts,mapRng),cx,cy,r:baseR*1.15,shade:Math.floor(mapRng()*3)});
+    }
+    const fillRng=mkRng(0x58506c74^0x9e3779b9);
+    for(let i=0;i<12;i++){
+        const G=100;
+        let bestD=-1,bestX=0,bestY=0;
+        for(let gy=G/2;gy<WORLD_H;gy+=G){
+            for(let gx=G/2;gx<WORLD_W;gx+=G){
+                let d=1e9;
+                for(const o of obs){
+                    const dx=wrapDelta(o.cx,gx,WORLD_W),dy=wrapDelta(o.cy,gy,WORLD_H);
+                    const od=Math.hypot(dx,dy)-o.r;
+                    if(od<d)d=od;
+                }
+                if(d>bestD){bestD=d;bestX=gx;bestY=gy;}
+            }
+        }
+        if(bestD<360)break;
+        let x=bestX+(fillRng()-0.5)*120,y=bestY+(fillRng()-0.5)*120;
+        x=Math.max(120,Math.min(WORLD_W-120,x));
+        y=Math.max(120,Math.min(WORLD_H-120,y));
+        if(Math.hypot(x-SPAWN_CX,y-SPAWN_CY)<CLEAR_R)continue;
+        let ok=true;
+        for(const o of obs){if(Math.hypot(x-o.cx,y-o.cy)<MIN_SEP){ok=false;break;}}
+        if(!ok)continue;
+        const baseR=80+fillRng()*130,nPts=8+Math.floor(fillRng()*6);
+        obs.push({pts:genBlobPts(x,y,baseR,nPts,fillRng),cx:x,cy:y,r:baseR*1.15,shade:Math.floor(fillRng()*3)});
+    }
+    return obs;
+}
+const obstacles=buildObstacles();
+
+// ── Collision helpers ──────────────────────────────────────────────────────
+function pointInPoly(px,py,pts){
+    let inside=false;
+    for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+        const xi=pts[i].x,yi=pts[i].y,xj=pts[j].x,yj=pts[j].y;
+        if(((yi>py)!==(yj>py))&&(px<(xj-xi)*(py-yi)/(yj-yi)+xi))inside=!inside;
+    }
+    return inside;
+}
+function distSqPointSeg(px,py,ax,ay,bx,by){
+    const dx=bx-ax,dy=by-ay,len2=dx*dx+dy*dy;
+    if(len2===0)return Math.hypot(px-ax,py-ay);
+    const t=Math.max(0,Math.min(1,((px-ax)*dx+(py-ay)*dy)/len2));
+    return Math.hypot(px-(ax+t*dx),py-(ay+t*dy));
+}
+function circleHitsObs(cx,cy,r,obs){
+    const dx=wrapDelta(obs.cx,cx,WORLD_W),dy=wrapDelta(obs.cy,cy,WORLD_H);
+    if(Math.hypot(dx,dy)>obs.r+r+10)return false;
+    const tcx=obs.cx+dx,tcy=obs.cy+dy;
+    if(pointInPoly(tcx,tcy,obs.pts))return true;
+    const pts=obs.pts;
+    for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+        if(distSqPointSeg(tcx,tcy,pts[j].x,pts[j].y,pts[i].x,pts[i].y)<r)return true;
+    }
+    return false;
+}
+function isValidPowerupPos(x,y,r){
+    if(x<80+r||x>WORLD_W-80-r||y<80+r||y>WORLD_H-80-r)return false;
+    for(const obs of obstacles){if(circleHitsObs(x,y,r,obs))return false;}
+    return true;
+}
+function findPowerupPosition(r){
+    for(let attempt=0;attempt<250;attempt++){
+        const x=80+Math.random()*(WORLD_W-160);
+        const y=80+Math.random()*(WORLD_H-160);
+        if(isValidPowerupPos(x,y,r))return{x,y};
+    }
+    const fallback={x:WORLD_W/2,y:WORLD_H/2};
+    if(isValidPowerupPos(fallback.x,fallback.y,r))return fallback;
+    for(let gx=80;gx<=WORLD_W-80;gx+=r*2){
+        for(let gy=80;gy<=WORLD_H-80;gy+=r*2){
+            if(isValidPowerupPos(gx,gy,r))return{x:gx,y:gy};
+        }
+    }
+    return fallback;
+}
+function resolveObstacles(obj,radius){
+    for(const obs of obstacles){
+        if(!circleHitsObs(obj.x,obj.y,radius,obs))continue;
+        let dx=wrapDelta(obs.cx,obj.x,WORLD_W),dy=wrapDelta(obs.cy,obj.y,WORLD_H);
+        const d=Math.hypot(dx,dy)||1; dx/=d; dy/=d;
+        obj.x+=dx*4; obj.y+=dy*4;
+        if(obj.vx!==undefined){const dot=obj.vx*dx+obj.vy*dy;if(dot<0){obj.vx-=dot*dx*1.1;obj.vy-=dot*dy*1.1;}}
+    }
+    wrapPos(obj);
+}
+function obsRepulsion(ox,oy){
+    let fx=0,fy=0;
+    for(const obs of obstacles){
+        const dx=wrapDelta(obs.cx,ox,WORLD_W),dy=wrapDelta(obs.cy,oy,WORLD_H),d=Math.hypot(dx,dy)||1,margin=obs.r+140;
+        if(d<margin){const str=(margin-d)/margin*280;fx+=dx/d*str;fy+=dy/d*str;}
+    }
+    return{fx,fy};
+}
+
+// ── Entity counter ─────────────────────────────────────────────────────────
+let _nextGen=1; function nextGen(){return _nextGen++;}
+
+// ── Enemy AI profiles ──────────────────────────────────────────────────────
+const AI={
+    // tuned view radii and movement to improve responsiveness
+    circle:  {viewRadius:80,  thrustForce:82,  maxSpeed:120, turnRate:2.8,  drag:0.984, preferDist:0  },
+    shooter: {viewRadius:340, thrustForce:56,  maxSpeed:90,  turnRate:2.1,  drag:0.988, preferDist:200},
+    tank:    {viewRadius:220, thrustForce:120, maxSpeed:60,  turnRate:1.25, drag:0.978, preferDist:210},
+};
+// helper: find a spawn position that's not too close to player or other entities
+function findEnemyPosition(minDist=260){
+    for(let attempt=0;attempt<60;attempt++){
+        const x=Math.random()*WORLD_W, y=Math.random()*WORLD_H;
+        const dx = wrapDelta(x, player?.x || WORLD_W/2, WORLD_W), dy = wrapDelta(y, player?.y || WORLD_H/2, WORLD_H);
+        if(Math.hypot(dx,dy) < minDist) continue;
+        let ok=true;
+        for(const e of entities||[]){ if(Math.hypot(wrapDelta(x,e.x,WORLD_W), wrapDelta(y,e.y,WORLD_H)) < minDist){ ok=false; break; } }
+        if(ok) return {x,y};
+    }
+    // fallback
+    return {x:Math.random()*WORLD_W,y:Math.random()*WORLD_H};
+}
+
+function mkCircle(){const ang=Math.random()*Math.PI*2; const p=findEnemyPosition(180); const baseHp=1; const hp=Math.max(1,Math.round(baseHp*DIFFICULTY)); return{kind:'circle',gen:nextGen(),x:p.x,y:p.y,vx:Math.cos(ang)*30,vy:Math.sin(ang)*30,angle:ang,r:10+Math.floor(Math.random()*16),pts:10,hp:hp,maxHp:hp,baseHp:baseHp,hitFlash:0,...AI.circle,baseViewRadius:AI.circle.viewRadius,wanderAngle:ang,wanderTimer:0.5+Math.random()*1.0,passive:true,alertBoost:0,stuckTimer:0};}
+function mkShooter(){const ang=Math.random()*Math.PI*2; const p=findEnemyPosition(260); const baseHp=3; const hp=Math.max(1,Math.round(baseHp*DIFFICULTY)); return{kind:'shooter',gen:nextGen(),x:p.x,y:p.y,vx:Math.cos(ang)*20,vy:Math.sin(ang)*20,angle:ang,r:13,pts:20,fireCool:0.7+Math.random()*0.6,hp:hp,maxHp:hp,baseHp:baseHp,hitFlash:0,...AI.shooter,baseViewRadius:AI.shooter.viewRadius,wanderAngle:ang,wanderTimer:0.5+Math.random()*1.0,neutral:false,alerted:false,alertTimer:0,lockedTarget:null,alertBoost:20,stuckTimer:0};}
+function mkTank(){const ang=Math.random()*Math.PI*2; const p=findEnemyPosition(280); const baseHp=6; const hp=Math.max(1,Math.round(baseHp*DIFFICULTY)); return{kind:'tank',gen:nextGen(),x:p.x,y:p.y,vx:Math.cos(ang)*10,vy:Math.sin(ang)*10,angle:ang,r:22+Math.floor(Math.random()*10),pts:50,hp:hp,maxHp:hp,baseHp:baseHp,hitFlash:0,...AI.tank,baseViewRadius:AI.tank.viewRadius,wanderAngle:ang,wanderTimer:0.5+Math.random()*1.0,neutral:true,alerted:false,alertTimer:0,lockedTarget:null,alertBoost:220,stuckTimer:0};}
+
+// ── Power cube factory ─────────────────────────────────────────────────────
+function mkCube(kindOverride){
+    const kind=kindOverride||POWERUP_KINDS[Math.floor(Math.random()*POWERUP_KINDS.length)];
+    const {x,y}=findPowerupPosition(POWERUP_DEFS[kind].r ?? 10);
+    return PickupSystem.createPickup(kind,{id:`${kind}-${nextGen()}`,x,y,r:POWERUP_DEFS[kind].r ?? 10,pulse:Math.random()*Math.PI*2,active:true,respawnTimer:0});
+}
+
+function makeLocalPowerCubes(){
+    return [...Array.from({length:N_SHIELD_CUBES},()=>mkCube('shield')),...Array.from({length:N_FUEL_CELLS},()=>mkCube('fuel_cell')),...Array.from({length:N_CUBES-N_SHIELD_CUBES-N_FUEL_CELLS},()=>mkCube())];
+}
+
+function respawnFuelCell(c){
+    const {x,y}=findPowerupPosition(POWERUP_DEFS.fuel_cell.r ?? 12);
+    c.kind='fuel_cell';
+    c.x=x; c.y=y; c.r=POWERUP_DEFS.fuel_cell.r ?? 12;
+    c.hp=PickupSystem.PICKUP_DEFS.fuel_cell.hp;
+    c.maxHp=PickupSystem.PICKUP_DEFS.fuel_cell.hp;
+    c.active=true; c.respawnTimer=0; c.pulse=Math.random()*Math.PI*2;
+    c.blastRadius=PickupSystem.FUEL_CELL_BLAST_RADIUS; c.respawnKind='fuel_cell';
+    c.fuseActive=false; c.fuseTimer=0; c.explosionDelay=FUEL_CELL_EXPLOSION_DELAY;
+}
+
+function startFuelCellFuse(c){
+    if(!c || c.kind!=='fuel_cell') return;
+    c.active=false;
+    c.fuseActive=true;
+    c.fuseTimer=PickupSystem.getPickupExplosionDelay(c) || FUEL_CELL_EXPLOSION_DELAY;
+    c.respawnTimer=0;
+    c.hitFlash=Math.max(c.hitFlash||0,0.24);
+    c.destroyFlash=Math.max(c.destroyFlash||0,0.32);
+}
+
+function explodeFuelCell(c){
+    if(!c || c.kind!=='fuel_cell') return false;
+    const blast = PickupSystem.monitorFuelExplosion(c, player, {
+        isActive: () => hasEffect('shield'),
+        absorbHit: (dmg) => absorbShieldHit(dmg),
+    });
+    if(blast.inBlast && !blast.shielded){ player.dead=true;document.getElementById('restartBtn').style.display='block'; }
+    c.active=false; c.fuseActive=false; c.fuseTimer=0; c.respawnTimer=PickupSystem.PICKUP_DEFS.fuel_cell.respawn ?? 22;
+    return true;
+}
+
+// ── Active effects (temporary only: shield, score_mult) ────────────────────
+let activeEffects={};
+let shieldHp=0;
+const SHIELD_MAX_HP=3;
+function hasEffect(n){return n in activeEffects&&activeEffects[n]>0;}
+function applyEffect(n){const d=POWERUP_DEFS[n];if(!d)return;activeEffects[n]=d.duration;if(n==='shield'){shieldHp=d.hp||SHIELD_MAX_HP;}showToast(d.label,d.color);}
+function tickEffects(dt){for(const n in activeEffects){activeEffects[n]-=dt;if(activeEffects[n]<=0){delete activeEffects[n];if(n==='shield')shieldHp=0;}}}
+function absorbShieldHit(dmg){
+    if(!hasEffect('shield'))return false;
+    shieldHp=Math.max(0,shieldHp-(dmg||1));
+    if(shieldHp<=0){delete activeEffects['shield'];showToast('🛡 Shield Broken!','#4488ff');}
+    return true;
+}
+
+// ── Derived stats (bullet upgrades now from the equipped upgrade) ───────
+function effectiveShootCool(){return isUpgradeActive('rapid')?SHOOT_COOL_BASE/1.8:SHOOT_COOL_BASE;}
+function effectiveBulletR()  {return isUpgradeActive('big_bullet')?6:3;}
+function effectiveBulletDmg(){return isUpgradeActive('big_bullet')?1.5:1;}
+function bulletCount()       {return isUpgradeActive('triple')?2:1;}
+function scoreMultiplier()   {return hasEffect('score_mult')?2:1;}
+function hasHomingShot()     {return isUpgradeActive('homing');}
+
+// ── Toast notifications ────────────────────────────────────────────────────
+let toasts=[];
+function showToast(text,color='#fff'){
+    const el=document.createElement('div');
+    el.className='toast'; el.textContent=text; el.style.color=color;
+    el.style.borderColor=color+'55'; el.style.boxShadow=`0 0 12px ${color}44`;
+    document.getElementById('toastStack').appendChild(el);
+    toasts.push({el,timeLeft:3});
+    if(toasts.length>4){const old=toasts.shift();old.el.remove();}
+}
+function tickToasts(dt){
+    for(let i=toasts.length-1;i>=0;i--){
+        toasts[i].timeLeft-=dt;
+        toasts[i].el.style.opacity=toasts[i].timeLeft<0.6?(toasts[i].timeLeft/0.6).toFixed(2):'1';
+        if(toasts[i].timeLeft<=0){toasts[i].el.remove();toasts.splice(i,1);}
+    }
+}
+function playerDisplayName(id){
+    if(id===MY_ID) return myName;
+    if(remotePlayers[id]) return remotePlayers[id].name;
+    if(allKnownIds.has(id)) return String(id).slice(0,6);
+    return String(id||'?').slice(0,6);
+}
+function showKillFeed(killer, target){
+    if(!pvpMode) return;
+    if(target===MY_ID){
+        showToast(`☠ You were eliminated by ${playerDisplayName(killer)}`,'#ff8080');
+    } else {
+        showToast(`🎯 ${playerDisplayName(target)} eliminated by ${playerDisplayName(killer)}`,'#ffb080');
+    }
+}
+
+// ── Inline chat / log (issue #37) ─────────────────────────────────────────
+// A unified on-screen log fed by server-authored "game_event" messages
+// (join/leave/death/chat/pickup) plus local single-player events. The chat
+// is rendered inline in the game view and auto-fades after a configurable
+// period of inactivity, reappearing whenever new activity occurs. See
+// game-log.js for the LogBuffer / GameLogUI / InlineChatUI implementation.
+const LOG_DEFAULTS = { maxMessages: 60, showTimestamps: true, autoHide: true, inactivityTimeout: 3000, fadeMs: 400 };
+let logMaxMessages = LOG_DEFAULTS.maxMessages, logShowTimestamps = LOG_DEFAULTS.showTimestamps,
+    logAutoHide = LOG_DEFAULTS.autoHide, logInactivityTimeout = LOG_DEFAULTS.inactivityTimeout,
+    logFadeMs = LOG_DEFAULTS.fadeMs;
+let gameLog = null, chatInputEl = null;
+
+function initGameLog(){
+    chatInputEl = document.getElementById('chatInput');
+    gameLog = GameLog.createInlineUI({
+        maxMessages: logMaxMessages,
+        showTimestamps: logShowTimestamps,
+        myId: MY_ID,
+        autoHide: logAutoHide,
+        inactivityTimeout: logInactivityTimeout,
+        fadeInMs: logFadeMs,
+        fadeOutMs: logFadeMs,
+        rootEl: document.getElementById('inlineChat'),
+        listEl: document.getElementById('inlineChatList'),
+        inputEl: chatInputEl,
+    });
+    chatInputEl.addEventListener('keydown', e => {
+        if(e.key === 'Enter'){
+            const text = chatInputEl.value.trim();
+            if(text){ sendChat(text); }
+            chatInputEl.value = '';
+            e.preventDefault();
+        } else if(e.key === 'Escape'){
+            chatInputEl.blur();
+        }
+    });
+    applyLogSettings();
+}
+function sendChat(text){
+    const t = String(text || '').slice(0, 240).trim();
+    if(!t) return;
+    if(ws && ws.readyState === WebSocket.OPEN){
+        // Online: the relay authors the "chat" game_event and echoes it back
+        // to every client (including us), so we don't log it locally.
+        try{ ws.send(JSON.stringify({type:'chat', id:MY_ID, text:t})); }catch(e){}
+    } else {
+        // Offline / single player: echo into the local log only.
+        if(gameLog) gameLog.push({event:'chat', id:MY_ID, name:myName, text:t});
+    }
+}
+function onLocalDeath(){
+    if(!gameLog) return;
+    if(pvpMode && ws && ws.readyState === WebSocket.OPEN) return; // relay logs it
+    gameLog.push({ event:'death', id:MY_ID, name:myName, killer:'' });
+}
+function applyLogSettings(){
+    if(!gameLog) return;
+    gameLog.setMaxMessages(logMaxMessages);
+    gameLog.setShowTimestamps(logShowTimestamps);
+    gameLog.setAutoHide(logAutoHide);
+    gameLog.setInactivityTimeout(logInactivityTimeout);
+    gameLog.setFadeDurations(logFadeMs, logFadeMs);
+}
+
+// ── Game state ─────────────────────────────────────────────────────────────
+let player,playerBullets,enemyBullets,entities,powerCubes,score,shootCool;
+const PLAYER_MAX_HP = PvPSystem.PLAYER_MAX_HP;
+const PLAYER_FUEL = {maxFuel:FUEL_MAX, fuel:FUEL_MAX, regenRate:FUEL_REGEN_RATE, idleDelay:FUEL_IDLE_DELAY, idleTimer:0};
+// host-authoritative player HP map (only used on host)
+let playersHP = {}; // { id: {hp, maxHp, dead} }
+// ramming cooldowns to avoid repeated collision damage
+let ramCooldowns = {}; // {remoteId: timeLeft}
+// entity vs entity ram cooldowns (host-side)
+let entityRamCooldowns = {}; // {"genA:genB": timeLeft}
+const ENTITY_RAM_COOLDOWN = 1.4;
+const RAM_COOLDOWN = PvPSystem.RAM_COOLDOWN, RAM_DAMAGE = PvPSystem.RAM_DAMAGE;
+// PvP mode toggle
+let pvpMode = false;
+let keys={},touch={left:0,right:0,thrust:false,shoot:false};
+
+function initGame(){
+    // In PvP every pilot spawns on a fair, deterministic spawn point; in
+    // single player everyone starts from the world centre.
+    const spawn = pvpMode ? PvPSystem.spawnPointForId(MY_ID, WORLD_W, WORLD_H) : {x:WORLD_W/2, y:WORLD_H/2};
+    player={x:spawn.x,y:spawn.y,vx:0,vy:0,angle:0,thrust:0,dead:false,hp:PLAYER_MAX_HP,maxHp:PLAYER_MAX_HP,_deathLogged:false};
+    player.fuelState = FuelSystem.createFuelState(FUEL_MAX, FUEL_MAX, FUEL_REGEN_RATE, FUEL_IDLE_DELAY);
+    // ensure host initializes its hp record for PvP
+    if(pvpMode && isHost) playersHP[MY_ID] = PvPSystem.createPlayerHPState();
+    playerBullets=[]; enemyBullets=[]; score=0; shootCool=0; activeEffects={}; shieldHp=0;
+    ownedUpgrades=new Set(); activeUpgrade=null; laserActive=false;
+    entities=[];
+    for(let i=0;i<N_CIRCLES;i++) entities.push(mkCircle());
+    for(let i=0;i<N_SHOOTERS;i++) entities.push(mkShooter());
+    for(let i=0;i<N_TANKS;i++) entities.push(mkTank());
+    // In multiplayer the relay server owns power-up state, so only seed
+    // local pickups when running single-player / before first snapshot.
+    powerCubes = serverPickupsActive ? (powerCubes||[]) : makeLocalPowerCubes();
+}
+function restart(){
+    initGame();
+    document.getElementById('restartBtn').style.display='none';
+    document.getElementById('deadMsg').style.display='none';
+    // In PvP the host owns the HP records: a non-host that restarts must ask
+    // the host to reset its record (and broadcast the fresh HP to everyone).
+    if(pvpMode && ws && ws.readyState===WebSocket.OPEN){
+        if(!isHost){ try{ ws.send(JSON.stringify({type:'player_respawn',id:MY_ID})); }catch(e){} }
+        else { playersHP[MY_ID] = PvPSystem.createPlayerHPState(); }
+    }
+}
+function setPvpMode(v){
+    pvpMode = !!v;
+    const cb=document.getElementById('mPvp'); if(cb) cb.checked = pvpMode;
+    showToast(pvpMode? 'PvP mode enabled' : 'PvP mode disabled', '#a0d0ff');
+    restart();
+}
+
+// ── Mouse ──────────────────────────────────────────────────────────────────
+let mouseX=0,mouseY=0;
+canvas.addEventListener('mousemove',e=>{const r=canvas.getBoundingClientRect();mouseX=e.clientX-r.left;mouseY=e.clientY-r.top;});
+
+// ── Networking ─────────────────────────────────────────────────────────────
+function setConnStatus(state,text){
+    netState=state;const el=document.getElementById('connStatus');el.textContent=text;
+    el.style.color=state==='connected'?'#7fdc8f':state==='connecting'?'#e0c060':state==='error'?'#e07070':'#888';
+}
+function wsUrlGuess(){const p=location.protocol==='https:'?'wss:':'ws:';return`${p}//${location.hostname||'localhost'}:8765`;}
+function connectMultiplayer(url){
+    if(ws){try{ws.close();}catch(e){}}
+    setConnStatus('connecting','Connecting...');
+    try{ws=new WebSocket(url);}catch(e){setConnStatus('error','Connection failed');return;}
+    ws.onopen=()=>{setConnStatus('connected','Connected');ws.send(JSON.stringify({type:'join',id:MY_ID,name:myName}));};
+    ws.onmessage=ev=>{let m;try{m=JSON.parse(ev.data);}catch(e){return;}handleNetMessage(m);};
+    ws.onerror=()=>setConnStatus('error','Connection error');
+    ws.onclose=()=>{
+        if(netState!=='error')setConnStatus('offline','Offline (single player)');
+        for(const id of [...allKnownIds]){if(id!==MY_ID)allKnownIds.delete(id);}
+        for(const id in remotePlayers)delete remotePlayers[id];
+        // Return to local (single-player) power-up simulation when the
+        // authoritative server disappears.
+        if(serverPickupsActive){
+            serverPickupsActive=false;serverPickupSeq=0;pickupRequestCooldowns={};
+            if(powerCubes)powerCubes=makeLocalPowerCubes();
+        }
+        reelectHost(); updatePlayerCount();
+    };
+}
+function handleNetMessage(msg){
+    if(!msg?.type)return;
+    // In-game chat/log (issue #32): server-authored events + late-joiner replay.
+    if(msg.type==='log_history'){ if(gameLog) gameLog.loadHistory(msg.events||[]); return; }
+    if(msg.type==='game_event'){ if(gameLog) gameLog.push(msg); return; }
+    if(msg.type==='roster'){(msg.players||[]).forEach(p=>{if(p.id!==MY_ID){allKnownIds.add(p.id);upsertRemote(p.id,p.name,p.state);}});reelectHost();updatePlayerCount();return;}
+    if(msg.type==='player_joined'){
+        if(msg.id===MY_ID) return;
+        allKnownIds.add(msg.id);
+        reelectHost();
+        const spawn = pvpMode ? PvPSystem.spawnPointForId(msg.id, WORLD_W, WORLD_H) : {x:WORLD_W/2, y:WORLD_H/2};
+        if(!remotePlayers[msg.id]) remotePlayers[msg.id]={x:spawn.x,y:spawn.y,angle:0,dead:false,name:msg.name||msg.id.slice(0,6),lastUpdate:performance.now()/1000,hp:PLAYER_MAX_HP,maxHp:PLAYER_MAX_HP};
+        // Host should initialize HP record for the joining player (PvP)
+        if(pvpMode && isHost) playersHP[msg.id] = PvPSystem.createPlayerHPState();
+        updatePlayerCount();
+        return;
+    }
+    // Player hit messages: host authoritative
+    if(msg.type==='player_hit'){
+        if(!pvpMode) return;
+        if(!isHost) return; // only host processes hits
+        const attacker = msg.id; const target = msg.target; const dmg = msg.dmg||1;
+        if(!target) return;
+        if(!playersHP[target]) playersHP[target] = PvPSystem.createPlayerHPState();
+        const res = PvPSystem.applyPlayerDamage(playersHP[target], dmg);
+        // Sync local state: the host is excluded from its own broadcast, so
+        // it must apply the authoritative HP to its own player/remotes here.
+        if(target===MY_ID){
+            player.hp = playersHP[MY_ID].hp;
+            player.dead = playersHP[MY_ID].dead;
+            if(player.dead){ document.getElementById('restartBtn').style.display='block'; }
+        } else if(remotePlayers[target]){
+            remotePlayers[target].hp = playersHP[target].hp;
+            remotePlayers[target].dead = playersHP[target].dead;
+        }
+        // broadcast updated hp to all clients
+        try{ ws.send(JSON.stringify({type:'player_hp',id:target,hp:playersHP[target].hp,dead:!!playersHP[target].dead,killer:attacker})); }catch(e){}
+        if(res.lethal) showKillFeed(attacker, target);
+        return;
+    }
+    if(msg.type==='player_hp'){
+        if(!pvpMode) return;
+        // apply hp update from host
+        const pid = msg.id; if(!pid) return;
+        if(pid===MY_ID){ player.hp = msg.hp; player.dead = !!msg.dead; if(player.dead){document.getElementById('restartBtn').style.display='block';} }
+        else { if(remotePlayers[pid]){ remotePlayers[pid].hp = msg.hp; remotePlayers[pid].dead = !!msg.dead; } }
+        // keep the host's authoritative record in sync too
+        if(isHost && playersHP[pid]){ playersHP[pid].hp = msg.hp; playersHP[pid].dead = !!msg.dead; }
+        if(msg.dead) showKillFeed(msg.killer, pid);
+        return;
+    }
+    if(msg.type==='player_respawn'){
+        if(!pvpMode) return;
+        const pid = msg.id; if(!pid) return;
+        if(isHost){
+            // reset the player's HP record and tell everyone they're alive
+            playersHP[pid] = PvPSystem.createPlayerHPState();
+            try{ ws.send(JSON.stringify({type:'player_hp',id:pid,hp:playersHP[pid].hp,dead:false,killer:''})); }catch(e){}
+        } else if(pid===MY_ID){
+            player.hp = PvPSystem.PLAYER_MAX_HP; player.dead = false;
+            document.getElementById('restartBtn').style.display='none';
+            document.getElementById('deadMsg').style.display='none';
+        }
+        return;
+    }
+    if(msg.type==='player_left'){allKnownIds.delete(msg.id);reelectHost();delete remotePlayers[msg.id];if(pvpMode&&isHost)delete playersHP[msg.id];updatePlayerCount();return;}
+    if(msg.type==='state'){if(msg.id===MY_ID)return;if(!allKnownIds.has(msg.id)){allKnownIds.add(msg.id);reelectHost();}upsertRemote(msg.id,msg.name,msg);return;}
+    if(msg.type==='shoot'){if(msg.id!==MY_ID)remoteBullets.push({x:msg.x,y:msg.y,vx:msg.vx,vy:msg.vy,life:2.2,owner:msg.id});return;}
+    if(msg.type==='enemies'){if(msg.id!==MY_ID&&!isHost)applyHostEntities(msg.entities||[]);return;}
+    // ── Server-authoritative power-up messages ──
+    if(msg.type==='pickup_state'){
+        serverPickupsActive=true;
+        if(msg.seq!==undefined&&msg.seq<serverPickupSeq)return; // ignore stale snapshots
+        if(msg.seq!==undefined)serverPickupSeq=msg.seq;
+        applyServerPickupList(msg.pickups||[]);
+        return;
+    }
+    if(msg.type==='pickup_spawned'){upsertServerPickup(msg.pickup);return;}
+    if(msg.type==='pickup_picked'){
+        if(msg.pickup)upsertServerPickup(msg.pickup);
+        if(msg.by===MY_ID&&msg.kind){
+            if(msg.kind==='fuel_cell'){
+                score+=25;
+                if(player.fuelState){player.fuelState.fuel=player.fuelState.maxFuel;player.fuelState.idleTimer=0;}
+                showToast('⛽ Fuel Cell secured','#7ef0a0');
+            } else { applyEffect(msg.kind); }
+        }
+        return;
+    }
+    if(msg.type==='pickup_damaged'){
+        if(msg.pickup)upsertServerPickup(msg.pickup);
+        if(msg.destroyed&&msg.primed)showToast('⛽ Fuel Cell primed','#7ef0a0');
+        return;
+    }
+    if(msg.type==='pickup_exploded'){
+        if(msg.pickup)upsertServerPickup(msg.pickup);
+        const blastRadius=msg.blastRadius||PickupSystem.FUEL_CELL_BLAST_RADIUS;
+        if(!player.dead&&!hostMenuPause()&&Math.hypot(wrapDelta(player.x,msg.x,WORLD_W),wrapDelta(player.y,msg.y,WORLD_H))<blastRadius){
+            if(!hasEffect('shield')){player.dead=true;document.getElementById('restartBtn').style.display='block';}
+        }
+        return;
+    }
+    if(msg.type==='hit'){
+        if(!isHost||msg.id===MY_ID)return;
+        const e=entities[msg.idx];if(!e)return;
+        if(msg.gen!==undefined&&e.gen!==msg.gen)return;
+        e.hp=Math.max(0,e.hp-1);e.hitFlash=0.18;
+        if(!e.passive){
+            e.alerted=true; e.alertTimer=6.0;
+            if(e.kind==='tank'){
+                // lock on to the attacking player
+                e.lockedTarget={type:'player',id:msg.id,timer:6.0};
+            } else {
+                e.lockedTarget={timer:6.0};
+            }
+        }
+        if(e.hp<=0)entities.splice(msg.idx,1,e.kind==='circle'?mkCircle():e.kind==='shooter'?mkShooter():mkTank());
+        return;
+    }
+}
+function upsertRemote(id,name,state){
+    if(!state)return;const ex=!!remotePlayers[id];
+    const old=ex?remotePlayers[id]:null;
+    let px=state.x,py=state.y,pa=state.angle||0,lp=1;
+    if(old&&Number.isFinite(old._prevX)){
+        const k=Math.min(1,old._lerp||0);
+        px=old._prevX+wrapDelta(old._prevX,old.x,WORLD_W)*k;
+        py=old._prevY+wrapDelta(old._prevY,old.y,WORLD_H)*k;
+        pa=old._prevAngle+normAngleDiff((old.angle||0)-old._prevAngle)*k;
+        lp=0;
+    }
+    remotePlayers[id]={x:state.x,y:state.y,angle:state.angle||0,dead:!!state.dead,name:name||old?.name||id.slice(0,6),lastUpdate:performance.now()/1000,hp:(state.hp!==undefined?state.hp:PLAYER_MAX_HP),maxHp:(state.maxHp||PLAYER_MAX_HP),fuelState:state.fuel!==undefined?FuelSystem.createFuelState(state.maxFuel||FUEL_MAX,state.fuel||0,FUEL_REGEN_RATE,FUEL_IDLE_DELAY):undefined,_prevX:px,_prevY:py,_prevAngle:pa,_lerp:lp};
+    if(!ex)updatePlayerCount();
+}
+function updatePlayerCount(){const n=Object.keys(remotePlayers).length;document.getElementById('playerCount').textContent=n>0?` · ${n} other pilot${n===1?'':'s'} online`:'';}
+function pruneStaleRemotes(){const now=performance.now()/1000;let ch=false;for(const id in remotePlayers){if(now-remotePlayers[id].lastUpdate>REMOTE_TIMEOUT){allKnownIds.delete(id);delete remotePlayers[id];ch=true;}}if(ch){reelectHost();updatePlayerCount();}}
+
+// ── Entity sync ────────────────────────────────────────────────────────────
+function serializeEntities(){
+    return entities.map(e=>{
+        const d={kind:e.kind,gen:e.gen,x:Math.round(e.x*10)/10,y:Math.round(e.y*10)/10,
+            vx:Math.round(e.vx*10)/10,vy:Math.round(e.vy*10)/10,
+            angle:Math.round((e.angle||0)*1000)/1000,r:e.r,hp:e.hp,maxHp:e.maxHp,pts:e.pts};
+        if(e.kind==='shooter')d.fireCool=Math.round(e.fireCool*100)/100;
+        return d;
+    });
+}
+// ── Server-authoritative power-up sync ─────────────────────────────────────
+function serverPickupFromEntry(entry){
+    return PickupSystem.createPickup(entry.kind,{...entry});
+}
+function upsertServerPickup(entry){
+    if(!entry||!entry.id)return;
+    if(!powerCubes)powerCubes=[];
+    const local=powerCubes.find(c=>c.id===entry.id);
+    if(!local){powerCubes.push(serverPickupFromEntry(entry));return;}
+    PickupSystem.hydratePickup(local,entry);
+}
+function applyServerPickupList(pickups){
+    if(!Array.isArray(pickups))return;
+    // Reuse existing cube objects so animation state (pulse, hitFlash, ...)
+    // survives periodic snapshots instead of snapping back on every one.
+    const byId=new Map();
+    for(const c of (powerCubes||[]))byId.set(c.id,c);
+    powerCubes=pickups.map(entry=>{
+        const existing=byId.get(entry.id);
+        if(existing){PickupSystem.hydratePickup(existing,entry);return existing;}
+        return serverPickupFromEntry(entry);
+    });
+}
+function sendPickupRequest(pickupId){
+    if(!ws||ws.readyState!==WebSocket.OPEN)return;
+    const t=performance.now()/1000;
+    if(pickupRequestCooldowns[pickupId]&&t-pickupRequestCooldowns[pickupId]<PICKUP_REQUEST_INTERVAL)return;
+    pickupRequestCooldowns[pickupId]=t;
+    // Send the player's current position with the request: the server's copy
+    // of our last_state can lag by a state-send interval plus network
+    // latency, which made legitimate pickups uncollectable on remote clients.
+    ws.send(JSON.stringify({type:'pickup_request',id:MY_ID,pickupId,x:player.x,y:player.y}));
+}
+function sendPickupHit(pickupId,dmg,firedBy){
+    if(!ws||ws.readyState!==WebSocket.OPEN)return;
+    ws.send(JSON.stringify({type:'pickup_hit',id:MY_ID,pickupId,dmg:dmg||1,firedBy:firedBy||'player'}));
+}
+function applyHostEntities(hostEntities){
+    if(!Array.isArray(hostEntities)||!hostEntities.length)return;
+    const VK=new Set(['circle','shooter','tank']);
+    if(!hostEntities.every(he=>he&&VK.has(he.kind)&&typeof he.gen==='number'&&typeof he.x==='number'))return;
+    if(hostEntities.length!==entities.length){
+        entities=hostEntities.map(he=>{const e=he.kind==='circle'?mkCircle():he.kind==='shooter'?mkShooter():mkTank();Object.assign(e,he);e.hitFlash=0;e._prevX=e.x;e._prevY=e.y;e._prevAngle=e.angle||0;e._lerp=1;return e;});return;
+    }
+    for(let i=0;i<entities.length;i++){
+        const e=entities[i],he=hostEntities[i];
+        if(e.gen!==he.gen){
+            // Respawn elsewhere in the world: snap, don't slide across the map.
+            const ne=he.kind==='circle'?mkCircle():he.kind==='shooter'?mkShooter():mkTank();Object.assign(ne,he);ne.gen=he.gen;ne.hitFlash=0.15;
+            ne._prevX=he.x;ne._prevY=he.y;ne._prevAngle=he.angle||0;ne._lerp=1;
+            entities[i]=ne;
+        } else {
+            // Start a new interpolation segment from where we last rendered.
+            if(!Number.isFinite(e._prevX)){
+                e._prevX=e.x;e._prevY=e.y;e._prevAngle=e.angle||0;e._lerp=1;
+            }
+            const k=Math.min(1,e._lerp||0);
+            e._prevX=e._prevX+wrapDelta(e._prevX,e.x,WORLD_W)*k;
+            e._prevY=e._prevY+wrapDelta(e._prevY,e.y,WORLD_H)*k;
+            e._prevAngle=e._prevAngle+normAngleDiff((e.angle||0)-e._prevAngle)*k;
+            e.x=he.x;e.y=he.y;e.vx=he.vx;e.vy=he.vy;e.angle=he.angle||e.angle;
+            e._lerp=0;
+            if(he.hp<e.hp){e.hp=he.hp;e.hitFlash=0.15;}else{e.hp=he.hp;}
+            if(he.fireCool!==undefined)e.fireCool=he.fireCool;
+        }
+    }
+}
+function sendNetEntities(dt){
+    if(!ws||ws.readyState!==WebSocket.OPEN||!isHost)return;
+    entitySendAccum+=dt;if(entitySendAccum<1/ENTITY_SEND_HZ)return;
+    entitySendAccum=0;ws.send(JSON.stringify({type:'enemies',id:MY_ID,entities:serializeEntities()}));
+}
+function sendHit(idx,gen){if(!ws||ws.readyState!==WebSocket.OPEN||isHost)return;ws.send(JSON.stringify({type:'hit',id:MY_ID,idx,gen}));}
+function sendNetState(dt){
+    if(!ws||ws.readyState!==WebSocket.OPEN)return;
+    stateSendAccum+=dt;if(stateSendAccum<1/STATE_SEND_HZ)return;
+    stateSendAccum=0;ws.send(JSON.stringify({type:'state',id:MY_ID,name:myName,x:player.x,y:player.y,angle:player.angle,vx:player.vx,vy:player.vy,dead:player.dead,fuel:player.fuelState.fuel,maxFuel:player.fuelState.maxFuel,hp:player.hp,maxHp:player.maxHp}));
+}
+function sendNetShoot(b){if(!ws||ws.readyState!==WebSocket.OPEN)return;ws.send(JSON.stringify({type:'shoot',id:MY_ID,x:b.x,y:b.y,vx:b.vx,vy:b.vy}));}
+connectMultiplayer(wsUrlGuess());
+window.addEventListener('beforeunload',()=>{if(ws?.readyState===WebSocket.OPEN)try{ws.send(JSON.stringify({type:'leave',id:MY_ID}));}catch(e){}});
+
+// ── Scroll zoom ────────────────────────────────────────────────────────────
+canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    zoomLevel=Math.max(MIN_ZOOM,Math.min(MAX_ZOOM,zoomLevel+(e.deltaY>0?-1:1)*ZOOM_STEP));
+    recalcView();
+    const sl=document.getElementById('sZoom');
+    if(sl){sl.value=zoomLevel;document.getElementById('sZoomVal').textContent=zoomLevel.toFixed(2)+'×';}
+},{passive:false});
+
+// ── Input ──────────────────────────────────────────────────────────────────
+const joystickEl=document.getElementById('joystick');
+joystickEl.addEventListener('touchstart',e=>updateJoy(e.touches[0]));
+joystickEl.addEventListener('touchmove', e=>updateJoy(e.touches[0]));
+joystickEl.addEventListener('touchend',  ()=>{touch.left=touch.right=0;});
+function updateJoy(t){
+    const r=joystickEl.getBoundingClientRect();
+    const dx=t.clientX-(r.left+r.width/2),dy=t.clientY-(r.top+r.height/2);
+    if(Math.hypot(dx,dy)>r.width*0.15){const a=Math.atan2(dy,dx);touch.left=Math.cos(a);touch.right=Math.sin(a);}
+}
+document.getElementById('thrustBtn').addEventListener('touchstart',()=>{touch.thrust=true;});
+document.getElementById('thrustBtn').addEventListener('touchend',  ()=>{touch.thrust=false;});
+document.getElementById('shootBtn').addEventListener('touchstart',e=>{e.preventDefault();touch.shoot=true;});
+document.getElementById('shootBtn').addEventListener('touchend',  e=>{e.preventDefault();touch.shoot=false;});
+document.getElementById('restartBtn').addEventListener('touchstart',()=>{if(player.dead)restart();});
+window.addEventListener('keydown',e=>{
+    if(e.target && e.target.tagName && String(e.target.tagName).toLowerCase()==='input'){
+        // Don't fire game shortcuts while typing in the chat box.
+        if(e.key==='Escape')e.target.blur();
+        return;
+    }
+    if(e.key==='t'||e.key==='T'){
+        // The auto-hidden overlay uses display:none, so focus() alone cannot
+        // wake it. Show it before focusing to keep chat accessible after the
+        // inactivity timeout.
+        if(gameLog) gameLog.poke();
+        if(chatInputEl){ chatInputEl.focus(); }
+        e.preventDefault();
+        return;
+    }
+    keys[e.key]=true;
+    if((e.key==='r'||e.key==='R')&&player.dead)restart();
+    if(e.key==='p'||e.key==='P'){
+        if(document.getElementById('settingsOverlay').classList.contains('open'))closeSettings();
+        else if(document.getElementById('menuOverlay').classList.contains('open'))closeMenu();
+        else togglePause();
+    }
+    if(e.key==='m'||e.key==='M'){
+        if(document.getElementById('menuOverlay').classList.contains('open'))closeMenu();
+        else openMenu();
+    }
+    if(e.key==='v'||e.key==='V'){
+        setPvpMode(!pvpMode);
+    }
+    if(e.key==='Escape'){
+        if(document.getElementById('settingsOverlay').classList.contains('open'))closeSettings();
+        else if(document.getElementById('menuOverlay').classList.contains('open'))closeMenu();
+        else if(paused)closePause();
+    }
+});
+window.addEventListener('keyup',e=>{keys[e.key]=false;});
+
+// ── Utility ────────────────────────────────────────────────────────────────
+function wrapPos(obj){obj.x=((obj.x%WORLD_W)+WORLD_W)%WORLD_W;obj.y=((obj.y%WORLD_H)+WORLD_H)%WORLD_H;}
+function nearestEntity(x,y){
+    let best=null,bestD=Infinity;
+    for(const e of entities){const d=Math.hypot(wrapDelta(x,e.x,WORLD_W),wrapDelta(y,e.y,WORLD_H));if(d<bestD){bestD=d;best=e;}}
+    return best;
+}
+function normAngleDiff(da){return((da+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;}
+// Render pose for a network-interpolated object (entity or remote player).
+// Returns null when the object has no interpolation segment yet (freshly
+// created / not yet synced), in which case callers fall back to raw x/y/angle.
+// NOTE: _lerp is a number in [0,1]; 0 is a valid, freshly-started segment,
+// so we must NOT test it with truthiness (!!0 === false) — that was causing
+// entities to snap to the raw snapshot position on the frame after each
+// network update and twitch back and forth.
+function renderPose(o){
+    if(typeof o._lerp!=='number'||!Number.isFinite(o._prevX)||!Number.isFinite(o._prevY))return null;
+    const l=Math.min(1,o._lerp);
+    return{
+        x:o._prevX+wrapDelta(o._prevX,o.x,WORLD_W)*l,
+        y:o._prevY+wrapDelta(o._prevY,o.y,WORLD_H)*l,
+        a:o._prevAngle+normAngleDiff((o.angle||0)-o._prevAngle)*l,
+    };
+}
+
+// ── Enemy AI ───────────────────────────────────────────────────────────────
+function closestTarget(ex,ey){
+    let bestDist=Infinity,bestTx=0,bestTy=0;
+    const check=(tx,ty)=>{const dx=wrapDelta(ex,tx,WORLD_W),dy=wrapDelta(ey,ty,WORLD_H),d=Math.hypot(dx,dy);if(d<bestDist){bestDist=d;bestTx=dx;bestTy=dy;}};
+    if(!player.dead)check(player.x,player.y);
+    for(const id in remotePlayers){const rp=remotePlayers[id];if(!rp.dead)check(rp.x,rp.y);}
+    return{tx:bestTx,ty:bestTy,dist:bestDist};
+}
+function updateEnemyAI(e,dt){
+    // Alert timer countdown (for neutral enemies)
+    if(e.alerted){
+        e.alertTimer-=dt;
+        if(e.alertTimer<=0){e.alerted=false; e.lockedTarget=null;}
+    }
+
+    const{tx,ty,dist}=closestTarget(e.x,e.y);
+    const baseView = (e.baseViewRadius!==undefined)?e.baseViewRadius:(e.viewRadius||0);
+    const activeViewRadius = baseView + (e.alerted?(e.alertBoost||0):0);
+    const inRange = dist < activeViewRadius;
+    let steerAngle;
+    let hoverSide=0;
+    let hoverDir=null;
+    let desiredAngle=null;
+
+    // --- Circle: fully passive wander behavior ---
+    if(e.kind==='circle' || e.passive){
+        e.wanderTimer-=dt;
+        if(e.wanderTimer<=0){e.wanderAngle+=normAngleDiff((Math.random()-0.5)*Math.PI*1.4);e.wanderTimer=1.5+Math.random()*2.5;}
+        steerAngle=e.wanderAngle;
+    } else {
+        // --- Shooter / Tank: neutral until provoked; shooters are non-neutral by factory but still need in-range to act ---
+        const hostile = e.alerted || !e.neutral;
+        const active = e.lockedTarget || hostile;
+
+        // If we have a locked target (recent sighting or provoked), track it
+        if(e.lockedTarget){
+            // refresh lock while player visible
+            if(inRange){ e.lockedTarget.timer = Math.max(e.lockedTarget.timer || 0, 3.0); }
+            // steer toward locked target depending on its type
+            if(e.lockedTarget.type==='entity'){
+                const attacker = entities.find(x=>x.gen===e.lockedTarget.gen);
+                desiredAngle = attacker ? Math.atan2(wrapDelta(attacker.y,e.y,WORLD_H),wrapDelta(attacker.x,e.x,WORLD_W)) : Math.atan2(ty,tx);
+            } else if(e.lockedTarget.type==='player'){
+                const pid = e.lockedTarget.id;
+                if(pid===MY_ID){ desiredAngle = Math.atan2(wrapDelta(player.y,e.y,WORLD_H),wrapDelta(player.x,e.x,WORLD_W)); }
+                else if(remotePlayers[pid]){ const rp=remotePlayers[pid]; desiredAngle = Math.atan2(wrapDelta(rp.y,e.y,WORLD_H),wrapDelta(rp.x,e.x,WORLD_W)); }
+                else { desiredAngle = Math.atan2(ty,tx); }
+            } else {
+                desiredAngle = Math.atan2(ty,tx);
+            }
+            steerAngle = desiredAngle;
+            if((e.kind==='shooter' || e.kind==='tank') && dist<e.preferDist){
+                hoverSide = Math.sign(normAngleDiff(desiredAngle - e.angle))||1;
+                hoverDir = desiredAngle;
+            }
+        }
+        else if(hostile && inRange){
+            // become locked onto player when hostile or non-neutral and player is in detection radius
+            e.lockedTarget={timer:6.0};
+            desiredAngle = Math.atan2(ty,tx);
+            steerAngle = desiredAngle;
+            if((e.kind==='shooter' || e.kind==='tank') && dist<e.preferDist){
+                hoverSide = Math.sign(normAngleDiff(desiredAngle - e.angle))||1;
+                hoverDir = desiredAngle;
+            }
+        } else {
+            // neutral wandering
+            e.wanderTimer-=dt;
+            if(e.wanderTimer<=0){e.wanderAngle+=normAngleDiff((Math.random()-0.5)*Math.PI*1.4);e.wanderTimer=1.5+Math.random()*2.5;}
+            steerAngle=e.wanderAngle;
+        }
+    }
+
+    // blend obstacle repulsion
+    const rep=obsRepulsion(e.x,e.y);
+    if(rep.fx*rep.fx+rep.fy*rep.fy>400){
+        const repMag=Math.hypot(rep.fx,rep.fy),repStr=Math.min(1,(repMag-20)/200);
+        steerAngle=Math.atan2((1-repStr)*Math.sin(steerAngle)+repStr*(rep.fy/repMag),(1-repStr)*Math.cos(steerAngle)+repStr*(rep.fx/repMag));
+    }
+
+    // apply turning and thrust
+    const da=normAngleDiff(steerAngle-e.angle);
+    e.angle+=Math.sign(da)*Math.min(Math.abs(da),e.turnRate*dt);
+    // thrust stronger when actively fleeing/locked or if a neutral enemy is within its own close flee range
+    let thrustStr = (e.kind==='circle' && dist < 220) ? 1.0 : ((e.lockedTarget||e.alerted)?1.0:0.25);
+    if((e.kind==='shooter' || e.kind==='tank') && e.lockedTarget && dist < e.preferDist) thrustStr = 0.85;
+    e.vx+=Math.cos(e.angle)*e.thrustForce*thrustStr*dt;
+    e.vy+=Math.sin(e.angle)*e.thrustForce*thrustStr*dt;
+    if(hoverSide && hoverDir!==null && (e.kind==='shooter' || e.kind==='tank')){
+        const hoverForce = e.thrustForce * (e.kind==='tank'?0.75:0.55) * thrustStr;
+        const hoverAngle = hoverDir + hoverSide*Math.PI*0.5;
+        e.vx += Math.cos(hoverAngle) * hoverForce * dt;
+        e.vy += Math.sin(hoverAngle) * hoverForce * dt;
+    }
+    const spd=Math.hypot(e.vx,e.vy);
+    if(spd>e.maxSpeed){e.vx=e.vx/spd*e.maxSpeed;e.vy=e.vy/spd*e.maxSpeed;}
+    e.vx*=e.drag; e.vy*=e.drag;
+    e.x+=e.vx*dt; e.y+=e.vy*dt;
+    wrapPos(e); resolveObstacles(e,e.r);
+
+    // Simple stuck-avoidance: if an AI's speed is very low for a short
+    // duration, nudge it with a random wander impulse so it doesn't get
+    // permanently stuck on obstacles or geometry.
+    const _spd = Math.hypot(e.vx,e.vy);
+    if(!e.passive){
+        // more sensitive stuck detection and stronger nudge to avoid getting permanently stuck
+        e.stuckTimer = (e.stuckTimer||0) + (_spd < 10 ? dt : -dt);
+        if(e.stuckTimer < 0) e.stuckTimer = 0;
+        if(e.stuckTimer > 0.6){
+            e.wanderAngle += (Math.random()-0.5)*Math.PI*1.8;
+            e.vx += Math.cos(e.wanderAngle) * (e.thrustForce||40) * 0.16;
+            e.vy += Math.sin(e.wanderAngle) * (e.thrustForce||40) * 0.16;
+            e.stuckTimer = 0;
+        }
+    }
+
+    // decay locked target timer
+    if(e.lockedTarget){
+        e.lockedTarget.timer -= dt;
+        if(e.lockedTarget.timer<=0) e.lockedTarget=null;
+    }
+}
+
+// ── Update ─────────────────────────────────────────────────────────────────
+// True while the online host has an overlay open (pause/menu/settings). The
+// world keeps simulating so remote clients keep receiving live snapshots, but
+// the host's own ship stays frozen and invulnerable while the overlay is open.
+function hostMenuPause(){ return paused && netState==='connected' && isHost; }
+function update(dt){
+    const hmp = hostMenuPause();
+    // Log local (single-player / offline) deaths once each time the ship dies.
+    if(player.dead && !player._deathLogged){ player._deathLogged = true; onLocalDeath(); }
+    tickEffects(dt); tickToasts(dt);
+    for(const c of powerCubes||[]){ if(c.hitFlash>0)c.hitFlash=Math.max(0,c.hitFlash-dt); if(c.destroyFlash>0)c.destroyFlash=Math.max(0,c.destroyFlash-dt); }
+    // tick ram cooldown timers
+    for(const k of Object.keys(ramCooldowns)){ ramCooldowns[k]-=dt; if(ramCooldowns[k]<=0)delete ramCooldowns[k]; }
+
+    // While the online host's overlay is open the ship is frozen: no turning,
+    // thrusting, shooting, lasers, or movement.
+    if(!hmp){
+    // — Turn —
+    if(turnMode==='mouse'){
+        const ta=Math.atan2(mouseY-canvas.height/2,mouseX-canvas.width/2);
+        const da=normAngleDiff(ta-player.angle);
+        player.angle+=Math.sign(da)*Math.min(Math.abs(da),sensitivity*2.5*dt);
+    } else {
+        if(keys['ArrowLeft']||keys['a']||keys['A']||touch.left<-0.5) player.angle-=sensitivity*dt;
+        if(keys['ArrowRight']||keys['d']||keys['D']||touch.left>0.5) player.angle+=sensitivity*dt;
+    }
+
+    // — Thrust —
+    const wantsThrust = !!(keys['ArrowUp']||keys['w']||keys['W']||touch.thrust);
+    const shooting=(keys[' ']||keys['Space']||touch.shoot)&&!player.dead;
+    const isActivelyUsingFuel = wantsThrust || shooting;
+    FuelSystem.tickFuelRegen(player.fuelState, dt, isActivelyUsingFuel);
+
+    player.thrust=0;
+    if(wantsThrust && player.fuelState.fuel > 0) {
+        const spend = FuelSystem.consumeFuel(player.fuelState, FUEL_COST_THRUST);
+        if(spend.ok){ player.thrust=THRUST_POWER; }
+    }
+
+    // — Bullets —
+    shootCool-=dt;
+    if(shooting&&shootCool<=0){
+        const canShoot = FuelSystem.consumeFuel(player.fuelState, FUEL_COST_SHOOT);
+        if(canShoot.ok){
+            shootCool=effectiveShootCool();
+            const cnt=bulletCount(),spread=cnt>1?0.18:0;
+            for(let s=0;s<cnt;s++){
+                const ba=player.angle+(s-Math.floor(cnt/2))*spread;
+                const b={x:player.x+Math.cos(player.angle)*16,y:player.y+Math.sin(player.angle)*16,
+                    vx:player.vx+Math.cos(ba)*BULLET_SPEED,vy:player.vy+Math.sin(ba)*BULLET_SPEED,
+                    life:2.2,homing:hasHomingShot(),r:effectiveBulletR(),dmg:effectiveBulletDmg()};
+                playerBullets.push(b);
+                if(s===0)sendNetShoot(b);
+            }
+        }
+    }
+
+    // — Laser —
+    if(shooting&&isUpgradeActive('laser')){
+        laserActive=true;
+        const lx1=player.x+Math.cos(player.angle)*15, ly1=player.y+Math.sin(player.angle)*15;
+        const lx2=lx1+Math.cos(player.angle)*LASER_RANGE, ly2=ly1+Math.sin(player.angle)*LASER_RANGE;
+        laserEndX=lx2; laserEndY=ly2;
+        for(let i=0;i<entities.length;i++){
+            const e=entities[i];
+            if(distSqPointSeg(e.x,e.y,lx1,ly1,lx2,ly2)<e.r){
+                const hitGen=e.gen;
+                const laserSpend = FuelSystem.consumeFuel(player.fuelState, FUEL_COST_LASER * dt);
+                if(!laserSpend.ok){ laserActive=false; }
+                e.hp-=LASER_DPS*dt; e.hitFlash=0.06;
+                // mark non-passive enemies as alerted when damaged by player
+                if(!e.passive){ e.alerted=true; e.alertTimer=6.0; e.lockedTarget={timer:6.0}; }
+                laserEndX=e.x; laserEndY=e.y;
+                if(e.hp<=0){
+                    score+=e.pts*scoreMultiplier();
+                    entities.splice(i,1,e.kind==='circle'?mkCircle():e.kind==='shooter'?mkShooter():mkTank());
+                    if(!isHost)sendHit(i,hitGen);
+                }
+                break;
+            }
+        }
+    } else {
+        laserActive=false;
+    }
+
+    // — Player physics —
+    if(!player.dead){
+        player.vx+=Math.cos(player.angle)*player.thrust*dt;
+        player.vy+=Math.sin(player.angle)*player.thrust*dt;
+        player.vx*=0.995; player.vy*=0.995;
+        player.x+=player.vx*dt; player.y+=player.vy*dt;
+        wrapPos(player); resolveObstacles(player,10);
+    }
+    }
+
+    // — Player bullets (homing) —
+    playerBullets=playerBullets.filter(b=>{
+        if(b.homing){
+            const tgt=nearestEntity(b.x,b.y);
+            if(tgt){
+                const ta=Math.atan2(wrapDelta(b.y,tgt.y,WORLD_H),wrapDelta(b.x,tgt.x,WORLD_W));
+                const spd=Math.hypot(b.vx,b.vy);
+                const bAng=Math.atan2(b.vy,b.vx);
+                const na=bAng+Math.sign(normAngleDiff(ta-bAng))*Math.min(Math.abs(normAngleDiff(ta-bAng)),3.5*dt);
+                b.vx=Math.cos(na)*spd; b.vy=Math.sin(na)*spd;
+            }
+        }
+        b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt; wrapPos(b);
+        for(const obs of obstacles){if(circleHitsObs(b.x,b.y,b.r||3,obs))return false;}
+        return b.life>0;
+    });
+
+    enemyBullets=enemyBullets.filter(b=>{
+        b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt; wrapPos(b);
+        for(const obs of obstacles){if(circleHitsObs(b.x,b.y,4,obs))return false;}
+        return b.life>0;
+    });
+
+    // Host: check enemy bullets hitting other enemy entities (friendly fire)
+    if(isHost){
+        for(const b of [...enemyBullets]){
+            for(let i=0;i<entities.length;i++){
+                const e=entities[i];
+                if(!e) continue;
+                // don't let the shooter hit itself
+                if(b.ownerGen!==undefined && e.gen===b.ownerGen) continue;
+                const dx=wrapDelta(b.x,e.x,WORLD_W), dy=wrapDelta(b.y,e.y,WORLD_H);
+                if(Math.hypot(dx,dy) < (e.r+3)){
+                    // remove bullet
+                    enemyBullets = enemyBullets.filter(x=>x!==b);
+                    // apply damage
+                    e.hp = Math.max(0, e.hp-1); e.hitFlash=0.12;
+                    // if hit by another enemy, squares should retaliate against that attacker
+                    if(e.kind==='tank'){
+                        e.alerted = true; e.alertTimer = 6.0;
+                        if(b.ownerGen!==undefined){ e.lockedTarget = {type:'entity', gen: b.ownerGen, timer:6.0}; }
+                    } else {
+                        if(!e.passive){ e.alerted=true; e.alertTimer=6.0; e.lockedTarget={timer:6.0}; }
+                    }
+                    if(e.hp<=0){ entities.splice(i,1,e.kind==='circle'?mkCircle():e.kind==='shooter'?mkShooter():mkTank()); }
+                    break;
+                }
+            }
+        }
+    }
+
+    // --- PvP: player bullets vs remote players ---
+    if(pvpMode && Object.keys(remotePlayers).length>0){
+        for(const b of [...playerBullets]){
+            for(const rid in remotePlayers){
+                const rp = remotePlayers[rid]; if(!rp || rp.dead) continue;
+                if(PvPSystem.distanceBetween(b.x,b.y,rp.x,rp.y,WORLD_W,WORLD_H) < PvPSystem.BULLET_HIT_RADIUS){
+                    // hit remote player
+                    playerBullets = playerBullets.filter(x=>x!==b);
+                    if(isHost){ // host applies and broadcasts
+                        if(!playersHP[rid]) playersHP[rid] = PvPSystem.createPlayerHPState();
+                        const res = PvPSystem.applyPlayerDamage(playersHP[rid], (b.dmg||1));
+                        if(remotePlayers[rid]){ remotePlayers[rid].hp = playersHP[rid].hp; remotePlayers[rid].dead = playersHP[rid].dead; }
+                        try{ ws.send(JSON.stringify({type:'player_hp',id:rid,hp:playersHP[rid].hp,dead:!!playersHP[rid].dead,killer:MY_ID})); }catch(e){}
+                        if(res.lethal) showKillFeed(MY_ID, rid);
+                    } else {
+                        if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:'player_hit',id:MY_ID,target:rid,dmg:(b.dmg||1)}));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Note: bullet-vs-player hits are reported only by the bullet's owner
+    // (see the block above). The target client never reports a remote bullet
+    // hitting it — otherwise both sides would detect the same collision and
+    // the host would apply the damage twice.
+
+    // — Enemy AI (host only) —
+    if(isHost){
+        for(const e of entities){
+            if(e.hitFlash>0)e.hitFlash-=dt;
+            updateEnemyAI(e,dt);
+            if(e.kind==='shooter'){
+                e.fireCool-=dt;
+                const{dist}=closestTarget(e.x,e.y);
+                // shooters only fire when hostile (alerted) or configured non-neutral
+                const eBase = (e.baseViewRadius!==undefined)?e.baseViewRadius:(e.viewRadius||0);
+                const eActiveView = eBase + (e.alerted?(e.alertBoost||0):0);
+                if(e.fireCool<=0 && (e.alerted || !e.neutral) && dist<eActiveView && !player.dead){
+                    // faster, consistent cooldown matching Pyodide: shorter interval
+                    e.fireCool = 0.7 + Math.random()*0.6;
+                    enemyBullets.push({x:e.x+Math.cos(e.angle)*(e.r+4),y:e.y+Math.sin(e.angle)*(e.r+4),vx:Math.cos(e.angle)*160,vy:Math.sin(e.angle)*160,life:5,ownerGen:e.gen});
+                }
+            }
+        }
+    } else {
+        for(const e of entities){
+            if(e.hitFlash>0)e.hitFlash-=dt;
+            if(e._lerp!==undefined&&e._lerp<1)e._lerp=Math.min(1,e._lerp+dt*ENTITY_SEND_HZ);
+        }
+    }
+
+    // Interpolate remote players toward their latest state snapshots.
+    for(const id in remotePlayers){
+        const rp=remotePlayers[id];
+        if(rp._lerp!==undefined&&rp._lerp<1)rp._lerp=Math.min(1,rp._lerp+dt*STATE_SEND_HZ);
+    }
+
+    // Host: entity vs entity ramming (tanks kill attackers by ramming)
+    if(isHost){
+        for(let i=0;i<entities.length;i++){
+            const a = entities[i];
+            if(!a) continue;
+            // tanks are the rammers of interest
+            if(a.kind!=='tank') continue;
+            for(let j=0;j<entities.length;j++){
+                if(i===j) continue;
+                const b = entities[j]; if(!b) continue;
+                const key = `${a.gen}:${b.gen}`;
+                if(entityRamCooldowns[key]) continue;
+                const dx = wrapDelta(a.x,b.x,WORLD_W), dy = wrapDelta(a.y,b.y,WORLD_H);
+                const d = Math.hypot(dx,dy);
+                if(d < a.r + b.r - 4){
+                    // apply ram damage to the other entity
+                    entityRamCooldowns[key]=ENTITY_RAM_COOLDOWN;
+                    b.hp = Math.max(0, b.hp - RAM_DAMAGE*2);
+                    b.hitFlash = 0.2;
+                    // if the tank was targeting this entity, keep aggression
+                    if(a.lockedTarget && a.lockedTarget.type==='entity' && a.lockedTarget.gen===b.gen){ a.alerted=true; a.alertTimer=6.0; }
+                    if(b.hp<=0){ entities.splice(j,1,b.kind==='circle'?mkCircle():b.kind==='shooter'?mkShooter():mkTank()); if(j<i) i--; }
+                }
+            }
+        }
+        // decay entity ram cooldowns
+        for(const k of Object.keys(entityRamCooldowns)){ entityRamCooldowns[k]-=dt; if(entityRamCooldowns[k]<=0) delete entityRamCooldowns[k]; }
+        // Host: tanks ram player when aggressive
+        for(const a of entities){
+            if(a.kind!=='tank') continue;
+            const dx = wrapDelta(a.x, player.x, WORLD_W), dy = wrapDelta(a.y, player.y, WORLD_H);
+            const d = Math.hypot(dx,dy);
+            const keyp = `${a.gen}:player`;
+            if(d < a.r + 8 && !entityRamCooldowns[keyp]){
+                // only aggressive tanks ram players
+                if(!hmp && (a.alerted || (a.lockedTarget && a.lockedTarget.type==='player'))){
+                    entityRamCooldowns[keyp]=ENTITY_RAM_COOLDOWN;
+                    // apply damage to player (host authoritative, PvP only)
+                    if(pvpMode){
+                        if(!playersHP[MY_ID]) playersHP[MY_ID] = PvPSystem.createPlayerHPState();
+                        PvPSystem.applyPlayerDamage(playersHP[MY_ID], RAM_DAMAGE);
+                        player.hp = playersHP[MY_ID].hp;
+                        if(playersHP[MY_ID].dead){ playersHP[MY_ID].dead = true; player.dead = true; document.getElementById('restartBtn').style.display='block'; }
+                        try{ ws&&ws.send(JSON.stringify({type:'player_hp',id:MY_ID,hp:playersHP[MY_ID].hp,dead:!!playersHP[MY_ID].dead,killer:'enemy:'+a.gen})); }catch(e){}
+                    }
+                }
+            }
+        }
+    }
+
+    // — Power cube respawn —
+    // While the relay server is authoritative, spawns/respawns/fuses are
+    // decided server-side; the client only animates pulse/flash locally.
+    for(const c of powerCubes){
+        c.pulse+=dt*2.5;
+        if(serverPickupsActive)continue;
+        if(c.kind==='fuel_cell' && c.fuseActive){
+            c.fuseTimer-=dt;
+            if(c.fuseTimer<=0){ explodeFuelCell(c); }
+        }
+        if(!c.active&&c.respawnTimer>0){c.respawnTimer-=dt;if(c.respawnTimer<=0){
+            if(c.kind==='fuel_cell'){
+                respawnFuelCell(c);
+            } else {
+                const f=mkCube(c.kind);c.kind=f.kind;c.x=f.x;c.y=f.y;c.r=f.r;c.pulse=f.pulse;c.active=true;c.maxHp=f.maxHp;c.hp=f.hp;c.hitFlash=0;c.destroyFlash=0;
+            }
+        }}
+    }
+
+    // — Player vs power cubes —
+    if(!player.dead && !hmp){
+        for(const c of powerCubes){
+            if(!c.active && !c.fuseActive)continue;
+            if(Math.hypot(player.x-c.x,player.y-c.y)<c.r+10){
+                if(c.kind==='fuel_cell' && c.fuseActive) continue;
+                if(serverPickupsActive){
+                    // Server-authoritative: report the collect attempt and wait
+                    // for the server to confirm before applying any effect.
+                    sendPickupRequest(c.id);
+                    continue;
+                }
+                c.active=false;c.respawnTimer=18+Math.random()*8;
+                if(c.kind==='fuel_cell'){
+                    score+=25;
+                    if(player.fuelState){
+                        player.fuelState.fuel = player.fuelState.maxFuel;
+                        player.fuelState.idleTimer = 0;
+                    }
+                    showToast('⛽ Fuel Cell secured','#7ef0a0');
+                }
+                else{applyEffect(c.kind);}
+            }
+        }
+    }
+
+    // — Player collisions —
+    const CRASH_SPEED = 140;
+    if(!player.dead && !hmp){
+        for(const e of entities){
+            const dx = wrapDelta(player.x,e.x,WORLD_W), dy = wrapDelta(player.y,e.y,WORLD_H);
+            const d = Math.hypot(dx,dy);
+            if(d < e.r+8){
+                // Circles: harmless bounce (cannot harm player)
+                if(e.kind==='circle'){
+                    const nx = d?dx/d:1, ny = d?dy/d:0;
+                    const targetDist = e.r + 18;
+                    const push = Math.max(0, targetDist - d);
+                    player.x = e.x + targetDist*nx;
+                    player.y = e.y + targetDist*ny;
+                    e.x -= nx * (push*0.5);
+                    e.y -= ny * (push*0.5);
+                    wrapPos(player); wrapPos(e);
+                    const vAlong = player.vx*nx + player.vy*ny;
+                    player.vx = player.vx - 1.4*vAlong*nx;
+                    player.vy = player.vy - 1.4*vAlong*ny;
+                    e.vx += nx*32; e.vy += ny*32;
+                    e.hitFlash=0.05;
+                    continue;
+                }
+                // Tanks: damage when crashed into or when aggressive (ramming)
+                if(e.kind==='tank'){
+                    const relSpd = Math.hypot(player.vx - (e.vx||0), player.vy - (e.vy||0));
+                    const tankAggressive = e.alerted || (e.lockedTarget && e.lockedTarget.type==='player');
+                    const willDamage = tankAggressive || relSpd>CRASH_SPEED;
+                    if(willDamage){
+                        if(hasEffect('shield')){
+                            const nx=d?dx/d:1,ny=d?dy/d:0;
+                            e.x=player.x+nx*(e.r+12);e.y=player.y+ny*(e.r+12);
+                            e.vx=nx*120;e.vy=ny*120;
+                            e.hp=Math.max(0,e.hp-1);e.hitFlash=0.2;
+                            e.alerted=true;e.alertTimer=6.0;e.lockedTarget={type:'player',id:MY_ID,timer:6.0};
+                            absorbShieldHit(1);
+                        }
+                        else {
+                            if(pvpMode && !isHost){ if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:'player_hit',id:'enemy:'+e.gen,target:MY_ID,dmg:RAM_DAMAGE})); }
+                            else if(pvpMode && isHost){
+                                if(!playersHP[MY_ID]) playersHP[MY_ID] = PvPSystem.createPlayerHPState();
+                                PvPSystem.applyPlayerDamage(playersHP[MY_ID], RAM_DAMAGE);
+                                if(playersHP[MY_ID].dead){ playersHP[MY_ID].dead=true; player.dead=true; document.getElementById('restartBtn').style.display='block'; }
+                                try{ ws&&ws.send(JSON.stringify({type:'player_hp',id:MY_ID,hp:playersHP[MY_ID].hp,dead:!!playersHP[MY_ID].dead,killer:'enemy:'+e.gen})); }catch(e){}
+                            }
+                            else if(!pvpMode){ player.dead=true; document.getElementById('restartBtn').style.display='block'; }
+                            e.alerted=true;e.alertTimer=6.0;e.lockedTarget={type:'player',id:MY_ID,timer:6.0};
+                        }
+                        break;
+                    } else {
+                        const nx = d?dx/d:1, ny = d?dy/d:0; player.x = e.x + (e.r+9)*nx; player.y = e.y + (e.r+9)*ny; player.vx*=0.6; player.vy*=0.6; continue;
+                    }
+                }
+                // Shooters and others: default lethal collision
+                if(hasEffect('shield')){
+                    const nx=d?dx/d:1,ny=d?dy/d:0;
+                    e.x=player.x+nx*(e.r+12);e.y=player.y+ny*(e.r+12);
+                    e.vx=nx*100;e.vy=ny*100;
+                    e.hp=Math.max(0,e.hp-1);e.hitFlash=0.2;
+                    e.alerted=true;e.alertTimer=6.0;
+                    absorbShieldHit(1);
+                }
+                else{ player.dead=true; document.getElementById('restartBtn').style.display='block'; }
+                break;
+            }
+        }
+        if(pvpMode){
+            // — PvP: ramming collisions with remote players —
+            for(const rid in remotePlayers){
+            const rp = remotePlayers[rid]; if(!rp || rp.dead) continue;
+            const d = PvPSystem.distanceBetween(player.x,player.y,rp.x,rp.y,WORLD_W,WORLD_H);
+            if(d < PvPSystem.RAM_HIT_RADIUS && !ramCooldowns[rid]){
+                ramCooldowns[rid]=RAM_COOLDOWN;
+                // deal damage to remote player (host authoritative)
+                if(isHost){
+                    if(!playersHP[rid]) playersHP[rid] = PvPSystem.createPlayerHPState();
+                    const res = PvPSystem.applyPlayerDamage(playersHP[rid], RAM_DAMAGE);
+                    if(res.lethal) showKillFeed(MY_ID, rid);
+                    try{ws.send(JSON.stringify({type:'player_hp',id:rid,hp:playersHP[rid].hp,dead:!!playersHP[rid].dead,killer:MY_ID}));}catch(e){}
+                }
+                else { if(ws&&ws.readyState===WebSocket.OPEN) ws.send(JSON.stringify({type:'player_hit',id:MY_ID,target:rid,dmg:RAM_DAMAGE})); }
+            }
+            }
+        }
+    }
+    if(!player.dead && !hmp){
+        for(const b of enemyBullets){
+            if(Math.hypot(player.x-b.x,player.y-b.y)<10){
+                if(hasEffect('shield')){
+                    b.vx=-b.vx;b.vy=-b.vy;b.dmg=1;b.firedBy='player';
+                    playerBullets.push(b);
+                    absorbShieldHit(1);
+                }
+                else{player.dead=true;document.getElementById('restartBtn').style.display='block';}
+                enemyBullets=enemyBullets.filter(x=>x!==b);
+                break;
+            }
+        }
+    }
+
+    // — Player bullets vs entities —
+    for(const b of playerBullets){
+        for(let i=0;i<entities.length;i++){
+            const e=entities[i];
+            if(Math.hypot(b.x-e.x,b.y-e.y)<e.r+(b.r||3)-3){
+                const hitGen=e.gen;
+                e.hp=Math.max(0,e.hp-(b.dmg||1)); e.hitFlash=0.15;
+                // mark neutral/non-passive enemies as alerted when hit by player
+                if(!e.passive){
+                    e.alerted=true; e.alertTimer=6.0;
+                    if(e.kind==='tank'){
+                        // tanks only retaliate when actually attacked
+                        e.alerted=true; e.alertTimer=6.0;
+                        e.lockedTarget={type:'player',id:MY_ID,timer:6.0};
+                    } else {
+                        e.alerted=true; e.alertTimer=6.0;
+                        e.lockedTarget={timer:6.0};
+                    }
+                }
+                playerBullets=playerBullets.filter(x=>x!==b);
+                if(e.hp<=0){
+                    score+=e.pts*scoreMultiplier();
+                    entities.splice(i,1,e.kind==='circle'?mkCircle():e.kind==='shooter'?mkShooter():mkTank());
+                    if(!isHost)sendHit(i,hitGen);
+                } else {
+                    if(!isHost)sendHit(i,hitGen);
+                }
+                break;
+            }
+        }
+    }
+
+    // — Bullets vs pickups —
+    for(const b of [...playerBullets]){
+        for(const c of powerCubes){
+            if(!c.active) continue;
+            if(Math.hypot(wrapDelta(b.x,c.x,WORLD_W),wrapDelta(b.y,c.y,WORLD_H)) < c.r + (b.r||3) - 2){
+                if(serverPickupsActive){
+                    // Server-authoritative: report the hit, server applies damage.
+                    sendPickupHit(c.id,b.dmg||1,'player');
+                } else {
+                    const result = PickupSystem.applyBulletDamageToPickup(c, b.dmg || 1, {consumeOnImpact:true, hitFlash:0.18, destroyFlash:0.24});
+                    c.hitFlash = Math.max(c.hitFlash || 0, 0.18);
+                    c.destroyFlash = result.destroyed ? 0.24 : (c.destroyFlash || 0);
+                    if(result.destroyed){
+                        const def = POWERUP_DEFS[c.kind];
+                        if(c.kind==='fuel_cell'){
+                            startFuelCellFuse(c);
+                            showToast('⛽ Fuel Cell primed','#7ef0a0');
+                        } else {
+                            showToast(`${def?.label || c.kind} destroyed`, def?.color || '#fff');
+                        }
+                    }
+                }
+                playerBullets = playerBullets.filter(x=>x!==b);
+                break;
+            }
+        }
+    }
+    for(const b of [...enemyBullets]){
+        for(const c of powerCubes){
+            if(!c.active) continue;
+            if(Math.hypot(wrapDelta(b.x,c.x,WORLD_W),wrapDelta(b.y,c.y,WORLD_H)) < c.r + 4){
+                if(serverPickupsActive){
+                    sendPickupHit(c.id,1,'enemy');
+                } else {
+                    const result = PickupSystem.applyBulletDamageToPickup(c, 1, {consumeOnImpact:true, hitFlash:0.16, destroyFlash:0.2});
+                    c.hitFlash = Math.max(c.hitFlash || 0, 0.16);
+                    c.destroyFlash = result.destroyed ? 0.2 : (c.destroyFlash || 0);
+                    if(result.destroyed){ const def = POWERUP_DEFS[c.kind]; if(c.kind==='fuel_cell'){ startFuelCellFuse(c); showToast('⛽ Fuel Cell primed','#7ef0a0'); } else { showToast(`${def?.label || c.kind} destroyed`, def?.color || '#fff'); } }
+                }
+                enemyBullets = enemyBullets.filter(x=>x!==b);
+                break;
+            }
+        }
+    }
+
+    remoteBullets=remoteBullets.filter(b=>{b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;wrapPos(b);return b.life>0;});
+
+    sendNetState(dt);
+    sendNetEntities(dt);
+    pruneStaleRemotes();
+    updateEffectsBar();
+}
+
+// ── Effects bar UI ─────────────────────────────────────────────────────────
+function updateEffectsBar(){
+    const bar=document.getElementById('effectsBar'); bar.innerHTML='';
+    for(const[name,tl]of Object.entries(activeEffects)){
+        const def=POWERUP_DEFS[name];if(!def)continue;
+        const chip=document.createElement('div');
+        chip.className='eff-chip'; chip.style.color=def.color; chip.style.background=def.bg; chip.style.borderColor=def.color+'55';
+        chip.textContent=`${def.label} ${tl.toFixed(1)}s`; bar.appendChild(chip);
+    }
+}
+
+// ── Draw ───────────────────────────────────────────────────────────────────
+function draw(){
+    let scx=canvas.width/viewW, scy=canvas.height/viewH;
+    if(!(scx>0)||!isFinite(scx))scx=canvas.width/BASE_VIEW_W;
+    if(!(scy>0)||!isFinite(scy))scy=canvas.height/600;
+    const camX=player.x, camY=player.y;
+    function w2s(wx,wy){return[(viewW/2+wrapDelta(camX,wx,WORLD_W))*scx,(viewH/2+wrapDelta(camY,wy,WORLD_H))*scy];}
+    function onScreen(sx,sy,pad=60){return sx>-pad&&sx<canvas.width+pad&&sy>-pad&&sy<canvas.height+pad;}
+
+    ctx.fillStyle='#080810'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Grid
+    ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1; ctx.beginPath();
+    const gs=400;
+    for(let gx=Math.floor((camX-viewW/2)/gs)*gs;gx<=camX+viewW/2+gs;gx+=gs){const px=(viewW/2+wrapDelta(camX,gx,WORLD_W))*scx;ctx.moveTo(px,0);ctx.lineTo(px,canvas.height);}
+    for(let gy=Math.floor((camY-viewH/2)/gs)*gs;gy<=camY+viewH/2+gs;gy+=gs){const py=(viewH/2+wrapDelta(camY,gy,WORLD_H))*scy;ctx.moveTo(0,py);ctx.lineTo(canvas.width,py);}
+    ctx.stroke();
+
+    // Obstacles
+    const SF=['#1a2820','#182422','#1e2a1c'], SS=['#2d4a38','#284040','#304a30'], SI=['rgba(255,255,255,0.04)','rgba(255,255,255,0.03)','rgba(255,255,255,0.05)'];
+    for(const obs of obstacles){
+        const[ox,oy]=w2s(obs.cx,obs.cy);
+        if(!onScreen(ox,oy,obs.r*Math.max(scx,scy)+30))continue;
+        const s=obs.shade||0;
+        ctx.fillStyle=SF[s]; ctx.strokeStyle=SS[s]; ctx.lineWidth=Math.max(0.5,1.5*Math.min(scx,scy));
+        ctx.beginPath();
+        const[fx,fy]=[ox+wrapDelta(obs.cx,obs.pts[0].x,WORLD_W)*scx,oy+wrapDelta(obs.cy,obs.pts[0].y,WORLD_H)*scy]; ctx.moveTo(fx,fy);
+        for(let i=1;i<obs.pts.length;i++){const px=ox+wrapDelta(obs.cx,obs.pts[i].x,WORLD_W)*scx,py=oy+wrapDelta(obs.cy,obs.pts[i].y,WORLD_H)*scy;ctx.lineTo(px,py);}
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle=SI[s]; ctx.lineWidth=Math.max(0.3,Math.min(scx,scy)); ctx.beginPath();
+        let _hlStarted=false;
+        for(let i=0;i<obs.pts.length;i++){
+            const pt=obs.pts[i];
+            if(pt.x-obs.cx<0&&pt.y-obs.cy<0){
+                const px=ox+wrapDelta(obs.cx,pt.x,WORLD_W)*scx,py=oy+wrapDelta(obs.cy,pt.y,WORLD_H)*scy;
+                if(!_hlStarted){ctx.moveTo(px,py);_hlStarted=true;}else{ctx.lineTo(px,py);}
+            }
+        }
+        ctx.stroke();
+    }
+
+    // Enemy view-radius ring
+    if(!player.dead){
+        for(const e of entities){
+            const ip=renderPose(e);
+            const rx=ip?ip.x:e.x;
+            const ry=ip?ip.y:e.y;
+            const[ex,ey]=w2s(rx,ry);if(!onScreen(ex,ey,e.r*scx+20))continue;
+            const{dist}=closestTarget(e.x,e.y);
+            const baseV = (e.baseViewRadius!==undefined)?e.baseViewRadius:(e.viewRadius||0);
+            const activeV = baseV + (e.alerted?(e.alertBoost||0):0);
+            if(dist<activeV){ctx.strokeStyle='rgba(255,100,100,0.12)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(ex,ey,activeV*scx,0,Math.PI*2);ctx.stroke();}
+        }
+    }
+
+    // Power cubes
+    for(const c of powerCubes){
+        if(!c.active && !c.fuseActive)continue;
+        const[cx,cy]=w2s(c.x,c.y);if(!onScreen(cx,cy,30))continue;
+        const def=POWERUP_DEFS[c.kind],pulse=0.7+0.3*Math.sin(c.pulse),s=c.r*scx*pulse;
+        const flash=Math.max(0,(c.hitFlash||0)/0.18);
+        ctx.save(); ctx.translate(cx,cy); ctx.rotate(c.pulse*0.4);
+        ctx.shadowColor=def.color; ctx.shadowBlur=16*pulse;
+        ctx.fillStyle=def.bg.replace('0.25',String((0.4+0.2*pulse).toFixed(2)));
+        ctx.strokeStyle=def.color; ctx.lineWidth=1.5;
+        ctx.fillRect(-s,-s,s*2,s*2); ctx.strokeRect(-s,-s,s*2,s*2);
+        ctx.shadowBlur=0; ctx.fillStyle=def.color;
+        ctx.font=`bold ${Math.round(s*1.1)}px monospace`; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(def.label.slice(0,2),0,0); ctx.restore();
+        if(c.kind==='fuel_cell'){
+            const br=Number(PickupSystem.getPickupBlastRadius(c));
+            const brSafe=(Number.isFinite(br)&&br>0)?br:PickupSystem.FUEL_CELL_BLAST_RADIUS;
+            const blastRadiusPx=brSafe*scx;
+            const alpha = c.fuseActive ? 0.35 + 0.2*Math.sin(c.pulse*2.5) : 0.18;
+            ctx.save(); ctx.strokeStyle=`rgba(255,120,80,${alpha})`; ctx.lineWidth=c.fuseActive?2.2:1.3; ctx.beginPath(); ctx.arc(cx,cy,blastRadiusPx,0,Math.PI*2); ctx.stroke(); ctx.restore();
+        }
+        if(c.maxHp>1&&c.hp<c.maxHp){
+            const bw=c.r*2*scx,bh=4*scx,bx=cx-bw/2,by=cy-c.r*scx-8*scx;
+            ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(bx,by,bw,bh);
+            ctx.fillStyle=`hsl(${Math.round((c.hp/c.maxHp)*110)},80%,50%)`; ctx.fillRect(bx,by,bw*(c.hp/c.maxHp),bh);
+        }
+        if(flash>0){
+            ctx.save(); ctx.beginPath(); ctx.arc(cx,cy,s*1.15,0,Math.PI*2); ctx.strokeStyle=`rgba(255,255,255,${0.25+flash*0.35})`; ctx.lineWidth=1.4; ctx.stroke(); ctx.restore();
+        }
+    }
+
+    // Entities
+    for(const e of entities){
+        const ip=renderPose(e);
+        const rx=ip?ip.x:e.x;
+        const ry=ip?ip.y:e.y;
+        const ra=ip?ip.a:(e.angle||0);
+        const[ex,ey]=w2s(rx,ry);if(!onScreen(ex,ey,e.r*scx+10))continue;
+        const fl=Math.min(1,Math.max(0,e.hitFlash/0.15));
+        const fc=base=>{const r=parseInt(base.slice(1,3),16),g=parseInt(base.slice(3,5),16),b=parseInt(base.slice(5,7),16);return`rgb(${Math.round(r+(255-r)*fl)},${Math.round(g+(255-g)*fl)},${Math.round(b+(255-b)*fl)})`;};
+        const spd=Math.hypot(e.vx,e.vy);
+        if(spd>15){
+            const ea=Math.atan2(e.vy,e.vx)+Math.PI,fl2=(0.4+Math.random()*0.6)*e.r*scx*1.8*(spd/e.maxSpeed);
+            const ex2=ex+Math.cos(ea)*e.r*scx*0.8,ey2=ey+Math.sin(ea)*e.r*scx*0.8;
+            const grad=ctx.createLinearGradient(ex2,ey2,ex2+Math.cos(ea)*fl2,ey2+Math.sin(ea)*fl2);
+            grad.addColorStop(0,e.kind==='tank'?'rgba(180,80,255,0.8)':e.kind==='shooter'?'rgba(255,160,50,0.8)':'rgba(100,180,255,0.8)');
+            grad.addColorStop(1,'rgba(0,0,0,0)');
+            ctx.strokeStyle=grad; ctx.lineWidth=4*scx*(spd/e.maxSpeed); ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(ex2,ey2); ctx.lineTo(ex2+Math.cos(ea)*fl2,ey2+Math.sin(ea)*fl2); ctx.stroke(); ctx.lineCap='butt';
+        }
+        if(e.kind==='circle'){
+            ctx.fillStyle=fc('#c87878'); ctx.beginPath(); ctx.arc(ex,ey,e.r*scx,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5;
+            ctx.beginPath(); ctx.moveTo(ex,ey); ctx.lineTo(ex+Math.cos(ra)*e.r*scx,ey+Math.sin(ra)*e.r*scx); ctx.stroke();
+        } else if(e.kind==='shooter'){
+            ctx.fillStyle=fc('#f0a050'); ctx.strokeStyle=fl>0.1?'#fff':'#ffcc80'; ctx.lineWidth=1;
+            const s=e.r*scx,h=[Math.cos(ra),Math.sin(ra)],rv=[Math.cos(ra+2.3),Math.sin(ra+2.3)],lv=[Math.cos(ra-2.3),Math.sin(ra-2.3)];
+            ctx.beginPath(); ctx.moveTo(ex+h[0]*s*1.2,ey+h[1]*s*1.2); ctx.lineTo(ex+rv[0]*s*0.9,ey+rv[1]*s*0.9); ctx.lineTo(ex+lv[0]*s*0.9,ey+lv[1]*s*0.9); ctx.closePath(); ctx.fill(); ctx.stroke();
+        } else {
+            ctx.fillStyle=fc('#9b59b6'); ctx.strokeStyle=fl>0.1?'#fff':'#c39bd3'; ctx.lineWidth=1.5;
+            const s=e.r*scx; ctx.save(); ctx.translate(ex,ey); ctx.rotate(ra+Math.PI/4);
+            ctx.fillRect(-s,-s,s*2,s*2); ctx.strokeRect(-s,-s,s*2,s*2); ctx.restore();
+        }
+        if(e.maxHp>1&&e.hp<e.maxHp){
+            const bw=e.r*2*scx,bh=4*scx,bx=ex-bw/2,by=ey-e.r*scx-8*scx;
+            ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(bx,by,bw,bh);
+            ctx.fillStyle=`hsl(${Math.round((e.hp/e.maxHp)*110)},80%,50%)`; ctx.fillRect(bx,by,bw*(e.hp/e.maxHp),bh);
+        }
+    }
+
+    // Enemy bullets
+    ctx.fillStyle='#ff6040';
+    for(const b of enemyBullets){const[bx,by]=w2s(b.x,b.y);if(!onScreen(bx,by,20))continue;ctx.beginPath();ctx.arc(bx,by,4*scx,0,Math.PI*2);ctx.fill();}
+
+    // Player bullets
+    ctx.fillStyle='#fff078';
+    for(const b of playerBullets){
+        const[bx,by]=w2s(b.x,b.y);
+        ctx.beginPath();ctx.arc(bx,by,(b.r||3)*scx,0,Math.PI*2);ctx.fill();
+        if(b.homing){ctx.strokeStyle='rgba(255,68,68,0.4)';ctx.lineWidth=1;ctx.beginPath();ctx.arc(bx,by,(b.r||3)*scx+4*scx,0,Math.PI*2);ctx.stroke();}
+    }
+
+    // Laser beam
+    if(laserActive&&!player.dead){
+        const[px,py]=w2s(player.x,player.y);
+        const[lx,ly]=w2s(laserEndX,laserEndY);
+        const ox=Math.cos(player.angle)*15*scx,oy=Math.sin(player.angle)*15*scx;
+        ctx.save();
+        // Glow
+        ctx.strokeStyle='rgba(255,40,40,0.35)'; ctx.lineWidth=14*scx; ctx.lineCap='round';
+        ctx.shadowColor='#ff2020'; ctx.shadowBlur=20;
+        ctx.beginPath(); ctx.moveTo(px+ox,py+oy); ctx.lineTo(lx,ly); ctx.stroke();
+        // Core
+        ctx.strokeStyle='rgba(255,150,150,0.9)'; ctx.lineWidth=3*scx; ctx.shadowBlur=8;
+        ctx.beginPath(); ctx.moveTo(px+ox,py+oy); ctx.lineTo(lx,ly); ctx.stroke();
+        // Bright centre
+        ctx.strokeStyle='rgba(255,240,240,1)'; ctx.lineWidth=1*scx; ctx.shadowBlur=0;
+        ctx.beginPath(); ctx.moveTo(px+ox,py+oy); ctx.lineTo(lx,ly); ctx.stroke();
+        ctx.restore();
+    }
+
+    // Remote players
+    for(const id in remotePlayers){
+        const rp=remotePlayers[id]; if(rp.dead)continue;
+        const ip=renderPose(rp);
+        const rx=ip?ip.x:rp.x;
+        const ry=ip?ip.y:rp.y;
+        const ra=ip?ip.a:(rp.angle||0);
+        const[rx2,ry2]=w2s(rx,ry); if(!onScreen(rx2,ry2))continue;
+        ctx.fillStyle='#7fdc8f';
+        const h=[Math.cos(ra),Math.sin(ra)],rv=[Math.cos(ra+2.5),Math.sin(ra+2.5)],lv=[Math.cos(ra-2.5),Math.sin(ra-2.5)],s=12*scx;
+        ctx.beginPath();ctx.moveTo(rx2+h[0]*s,ry2+h[1]*s);ctx.lineTo(rx2+rv[0]*s*0.7,ry2+rv[1]*s*0.7);ctx.lineTo(rx2+lv[0]*s*0.7,ry2+lv[1]*s*0.7);ctx.closePath();ctx.fill();
+        if(pvpMode && rp.maxHp>0){
+            const bw=22*scx,bh=3*scx,bx2=rx2-bw/2,by2=ry2-26*scx;
+            ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(bx2,by2,bw,bh);
+            const frac=Math.max(0,Math.min(1,(rp.hp||0)/rp.maxHp));
+            ctx.fillStyle=`hsl(${Math.round(frac*110)},80%,50%)`; ctx.fillRect(bx2,by2,bw*frac,bh);
+        }
+        ctx.fillStyle='#9fe0a8';ctx.font='11px monospace';ctx.textAlign='center';ctx.fillText(rp.name||id.slice(0,6),rx2,ry2-18*scx);
+    }
+    ctx.fillStyle='#90f0a0';
+    for(const b of remoteBullets){const[bx,by]=w2s(b.x,b.y);if(!onScreen(bx,by,20))continue;ctx.beginPath();ctx.arc(bx,by,3*scx,0,Math.PI*2);ctx.fill();}
+
+    // Player ship
+    if(!player.dead){
+        const[px,py]=w2s(player.x,player.y);
+        if(player.thrust>0){
+            const ea=player.angle+Math.PI,fl=8+(Math.random()*6);
+            const ex2=px+Math.cos(ea)*12*scx,ey2=py+Math.sin(ea)*12*scx;
+            const grad=ctx.createLinearGradient(ex2,ey2,ex2+Math.cos(ea)*fl*scx,ey2+Math.sin(ea)*fl*scx);
+            grad.addColorStop(0,'rgba(100,200,255,0.9)');grad.addColorStop(0.5,'rgba(60,120,255,0.6)');grad.addColorStop(1,'rgba(0,0,0,0)');
+            ctx.strokeStyle=grad;ctx.lineWidth=5*scx;ctx.lineCap='round';
+            ctx.beginPath();ctx.moveTo(ex2,ey2);ctx.lineTo(ex2+Math.cos(ea)*fl*scx,ey2+Math.sin(ea)*fl*scx);ctx.stroke();ctx.lineCap='butt';
+        }
+        ctx.fillStyle='#b4c8ff';
+        const h=[Math.cos(player.angle),Math.sin(player.angle)],rv=[Math.cos(player.angle+2.5),Math.sin(player.angle+2.5)],lv=[Math.cos(player.angle-2.5),Math.sin(player.angle-2.5)],s=12*scx;
+        ctx.beginPath();ctx.moveTo(px+h[0]*s,py+h[1]*s);ctx.lineTo(px+rv[0]*s*0.7,py+rv[1]*s*0.7);ctx.lineTo(px+lv[0]*s*0.7,py+lv[1]*s*0.7);ctx.closePath();ctx.fill();
+        if(hasEffect('shield')){ctx.strokeStyle='#4488ff';ctx.lineWidth=2;ctx.shadowColor='#4488ff';ctx.shadowBlur=10;ctx.beginPath();ctx.arc(px,py,s*1.8,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;}
+        if(turnMode==='mouse'){ctx.strokeStyle='rgba(200,200,255,0.2)';ctx.lineWidth=1;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(mouseX,mouseY);ctx.stroke();ctx.setLineDash([]);}
+    }
+
+    // HUD
+    document.getElementById('score').textContent=score;
+    const hpEl=document.getElementById('hpValue');
+    if(hpEl) hpEl.textContent=`${Math.max(0,player.hp)}/${player.maxHp}`;
+    const hpBar=document.getElementById('hpBarFill');
+    if(hpBar){
+        const hpct=Math.max(0,Math.min(1,player.hp/player.maxHp));
+        hpBar.style.width=`${hpct*100}%`;
+        hpBar.style.background = player.hp===1 ? '#ff6a6a' : '#6ad2ff';
+    }
+    const fuelEl=document.getElementById('fuelValue');
+    if(fuelEl){
+        fuelEl.textContent=`${Math.max(0,Math.floor(player.fuelState.fuel))}/${player.fuelState.maxFuel}`;
+        fuelEl.style.color = player.fuelState.fuel < 20 ? '#ff8a8a' : '#d7f0ff';
+    }
+    const fuelBar=document.getElementById('fuelBarFill');
+    if(fuelBar){
+        const pct=Math.max(0,Math.min(1,player.fuelState.fuel/player.fuelState.maxFuel));
+        fuelBar.style.width=`${pct*100}%`;
+        fuelBar.style.background = player.fuelState.fuel < 20 ? '#ff6a6a' : '#6affc7';
+    }
+    document.getElementById('deadMsg').style.display=player.dead?'block':'none';
+    document.getElementById('zoomHud').textContent=zoomLevel!==1.0?`zoom ${zoomLevel.toFixed(2)}×`:'';
+    const roleEl=document.getElementById('roleTag');
+    if(roleEl&&netState==='connected'){roleEl.textContent=isHost?' [HOST]':' [CLIENT]';roleEl.style.color=isHost?'#e0c060':'#80c0ff';}
+    else if(roleEl)roleEl.textContent='';
+    drawMinimap();
+}
+
+// ── Minimap ────────────────────────────────────────────────────────────────
+function drawMinimap(){
+    const mw=mm.width,mh=mm.height,sx=mw/WORLD_W,sy=mh/WORLD_H;
+    mctx.fillStyle='rgba(8,8,16,0.95)'; mctx.fillRect(0,0,mw,mh);
+    mctx.fillStyle='#1e3028';
+    for(const obs of obstacles){
+        mctx.beginPath(); mctx.moveTo(obs.pts[0].x*sx,obs.pts[0].y*sy);
+        for(let i=1;i<obs.pts.length;i++)mctx.lineTo(obs.pts[i].x*sx,obs.pts[i].y*sy);
+        mctx.closePath(); mctx.fill();
+    }
+    for(const c of powerCubes){if(!c.active)continue;mctx.fillStyle=POWERUP_DEFS[c.kind].color;mctx.fillRect(c.x*sx-2,c.y*sy-2,4,4);}
+    for(const e of entities){
+        const ip=renderPose(e);
+        const mx=(ip?ip.x:e.x)*sx;
+        const my=(ip?ip.y:e.y)*sy;
+        if(e.kind==='circle'){mctx.fillStyle='rgba(200,120,120,0.75)';mctx.fillRect(mx-1,my-1,2,2);}
+        else if(e.kind==='shooter'){mctx.fillStyle='#f0a050';mctx.fillRect(mx-1,my-1,3,3);}
+        else{mctx.fillStyle='#b07fe0';mctx.fillRect(mx-2,my-2,4,4);}
+    }
+    if(!player.dead){mctx.fillStyle='#b4c8ff';mctx.beginPath();mctx.arc(player.x*sx,player.y*sy,3,0,Math.PI*2);mctx.fill();}
+    mctx.fillStyle='#7fdc8f';
+    for(const id in remotePlayers){const rp=remotePlayers[id];if(rp.dead)continue;const ip=renderPose(rp);mctx.beginPath();mctx.arc((ip?ip.x:rp.x)*sx,(ip?ip.y:rp.y)*sy,2.5,0,Math.PI*2);mctx.fill();}
+    mctx.strokeStyle='rgba(255,255,255,0.65)'; mctx.lineWidth=1;
+    const vx=(player.x-viewW/2)*sx,vy=(player.y-viewH/2)*sy,vw=viewW*sx,vh=viewH*sy;
+    for(let ox=-mw;ox<=mw;ox+=mw)for(let oy=-mh;oy<=mh;oy+=mh)mctx.strokeRect(vx+ox,vy+oy,vw,vh);
+    mctx.strokeStyle='rgba(255,255,255,0.18)'; mctx.strokeRect(0,0,mw,mh);
+}
+
+// ── Pause ──────────────────────────────────────────────────────────────────
+let paused=false, pausedBySettings=false, pausedByMenu=false;
+function openPause(){paused=true;document.getElementById('pauseOverlay').classList.add('open');document.getElementById('pauseBtn').textContent='▶';document.getElementById('pauseScore').textContent=score;}
+function closePause(){paused=false;document.getElementById('pauseOverlay').classList.remove('open');document.getElementById('pauseBtn').textContent='⏸';}
+function togglePause(){if(paused&&!document.getElementById('settingsOverlay').classList.contains('open')&&!document.getElementById('menuOverlay').classList.contains('open'))closePause();else if(!paused)openPause();}
+
+// ── Menu (shop + profile) ──────────────────────────────────────────────────
+function buildUpgradeList(){
+    const list=document.getElementById('upgradeList'); list.innerHTML='';
+    for(const upg of UPGRADES){
+        const row=document.createElement('div'); row.className='upg-row'; row.id='upg-row-'+upg.id;
+        row.innerHTML=`<span class="upg-icon">${upg.icon}</span><div class="upg-info"><div class="upg-name">${upg.name}</div><div class="upg-desc">${upg.desc}</div></div><span class="upg-price">${upg.price} pts</span><button class="upg-buy" id="upg-btn-${upg.id}" onclick="buyUpgrade('${upg.id}')">Buy</button>`;
+        list.appendChild(row);
+    }
+}
+function updateShopUI(){
+    document.getElementById('shopScoreVal').textContent=score+' pts';
+    document.getElementById('mName').value=myName;
+    for(const upg of UPGRADES){
+        const btn=document.getElementById('upg-btn-'+upg.id); if(!btn)continue;
+        if(isUpgradeActive(upg.id)){btn.textContent='✓ Equipped';btn.className='upg-buy owned';btn.disabled=false;}
+        else if(isUpgradeOwned(upg.id)){btn.textContent='Equip';btn.className='upg-buy owned';btn.disabled=false;}
+        else if(score>=upg.price){btn.textContent='Buy';btn.className='upg-buy';btn.disabled=false;}
+        else{btn.textContent='Buy';btn.className='upg-buy';btn.disabled=true;}
+    }
+}
+function buyUpgrade(id){
+    const upg=UPGRADES.find(u=>u.id===id);
+    if(!upg)return;
+    if(!isUpgradeOwned(id)){
+        if(score < upg.price) return;
+        score -= upg.price;
+        ownedUpgrades.add(id);
+        showToast(upg.icon+' '+upg.name+' unlocked!','#a0d0ff');
+    }
+    activeUpgrade = id;
+    showToast(upg.icon+' '+upg.name+' equipped!','#a0d0ff');
+    updateShopUI();
+}
+function openMenu(){
+    if(!paused){openPause();pausedByMenu=true;}
+    buildUpgradeList(); updateShopUI();
+    const cb=document.getElementById('mPvp'); if(cb) cb.checked=!!pvpMode;
+    document.getElementById('menuOverlay').classList.add('open');
+}
+function closeMenu(){
+    document.getElementById('menuOverlay').classList.remove('open');
+    if(pausedByMenu){pausedByMenu=false;closePause();}
+}
+
+// ── Settings ───────────────────────────────────────────────────────────────
+function openSettings(){
+    if(!paused){openPause();pausedBySettings=true;}
+    // Drop focus from the chat input so keys don't land in the box
+    // behind the modal.
+    if(chatInputEl && document.activeElement===chatInputEl) chatInputEl.blur();
+    document.getElementById('sTurnMode').value=turnMode;
+    document.getElementById('sSens').value=sensitivity; document.getElementById('sSensVal').textContent=sensitivity.toFixed(1);
+    document.getElementById('sZoom').value=zoomLevel;   document.getElementById('sZoomVal').textContent=zoomLevel.toFixed(2)+'×';
+    document.getElementById('sFps').value=fpsCap;       document.getElementById('sFpsVal').textContent=fpsCap;
+    document.getElementById('sFpsUnlimit').value=unlimitFps?'1':'0';
+    document.getElementById('sLogAutoHide').value=logAutoHide?'1':'0';
+    document.getElementById('sLogTimeout').value=Math.round(logInactivityTimeout/1000);
+    document.getElementById('sLogTimeoutVal').textContent=Math.round(logInactivityTimeout/1000)+'s';
+    document.getElementById('sLogFade').value=(logFadeMs/1000).toFixed(1);
+    document.getElementById('sLogFadeVal').textContent=(logFadeMs/1000).toFixed(1)+'s';
+    document.getElementById('sLogTime').value=logShowTimestamps?'1':'0';
+    document.getElementById('sLogMax').value=logMaxMessages;
+    document.getElementById('sLogMaxVal').textContent=logMaxMessages;
+    // Difficulty selector: reflect current saved label or multiplier
+    try{
+        const savedLabel = localStorage.getItem('xp_difficulty_label');
+        if(savedLabel){ document.getElementById('sDifficulty').value = savedLabel; }
+        else { document.getElementById('sDifficulty').value = difficultyLabelFor(DIFFICULTY); }
+    }catch(e){ document.getElementById('sDifficulty').value = difficultyLabelFor(DIFFICULTY); }
+    document.getElementById('settingsOverlay').classList.add('open');
+}
+function closeSettings(){
+    document.getElementById('settingsOverlay').classList.remove('open');
+    if(pausedBySettings){pausedBySettings=false;closePause();}
+}
+function applySettings(){
+    turnMode   =document.getElementById('sTurnMode').value;
+    sensitivity=parseFloat(document.getElementById('sSens').value);
+    zoomLevel  =parseFloat(document.getElementById('sZoom').value);
+    fpsCap     =parseInt(document.getElementById('sFps').value,10);
+    unlimitFps =document.getElementById('sFpsUnlimit').value==='1';
+    logAutoHide          =document.getElementById('sLogAutoHide').value==='1';
+    logInactivityTimeout =parseInt(document.getElementById('sLogTimeout').value,10)*1000;
+    logFadeMs            =Math.round(parseFloat(document.getElementById('sLogFade').value)*1000);
+    logShowTimestamps    =document.getElementById('sLogTime').value==='1';
+    logMaxMessages       =parseInt(document.getElementById('sLogMax').value,10);
+    // Difficulty
+    const sel = document.getElementById('sDifficulty').value;
+    setDifficulty(sel, true);
+    recalcView(); applyLogSettings(); closeSettings();
+}
+function resetDefaults(){turnMode=DEFAULTS.turnMode;sensitivity=DEFAULTS.sensitivity;zoomLevel=DEFAULTS.zoom;fpsCap=DEFAULTS.fpsCap;unlimitFps=DEFAULTS.unlimitFps;logAutoHide=LOG_DEFAULTS.autoHide;logInactivityTimeout=LOG_DEFAULTS.inactivityTimeout;logFadeMs=LOG_DEFAULTS.fadeMs;logShowTimestamps=LOG_DEFAULTS.showTimestamps;logMaxMessages=LOG_DEFAULTS.maxMessages;applyLogSettings();recalcView();openSettings();}
+
+const sliderSync=(id,vid,fmt)=>{const e=document.getElementById(id),v=document.getElementById(vid);e.addEventListener('input',()=>v.textContent=fmt(e.value));};
+sliderSync('sSens','sSensVal',v=>parseFloat(v).toFixed(1));
+sliderSync('sZoom','sZoomVal',v=>parseFloat(v).toFixed(2)+'×');
+sliderSync('sFps','sFpsVal',v=>v);
+sliderSync('sLogTimeout','sLogTimeoutVal',v=>v+'s');
+sliderSync('sLogFade','sLogFadeVal',v=>parseFloat(v).toFixed(1)+'s');
+sliderSync('sLogMax','sLogMaxVal',v=>v);
+
+// ── Event listeners ────────────────────────────────────────────────────────
+document.getElementById('settingsBtn').addEventListener('click', openSettings);
+document.getElementById('settingsClose').addEventListener('click',closeSettings);
+document.getElementById('sApply').addEventListener('click',      applySettings);
+document.getElementById('sReset').addEventListener('click',      resetDefaults);
+document.getElementById('settingsOverlay').addEventListener('click',e=>{if(e.target===document.getElementById('settingsOverlay'))closeSettings();});
+
+document.getElementById('menuBtn').addEventListener('click', openMenu);
+document.getElementById('menuClose').addEventListener('click',closeMenu);
+document.getElementById('menuOverlay').addEventListener('click',e=>{if(e.target===document.getElementById('menuOverlay'))closeMenu();});
+document.getElementById('mNameApply').addEventListener('click',()=>{const n=document.getElementById('mName').value.trim();if(n)myName=n;showToast('Name set: '+myName,'#a0d0ff');});
+document.getElementById('mPvp').addEventListener('change',e=>{if(e.target.checked!==pvpMode)setPvpMode(e.target.checked);});
+
+document.getElementById('pauseBtn').addEventListener('click',togglePause);
+document.getElementById('pmResume').addEventListener('click',closePause);
+document.getElementById('pmMenu').addEventListener('click',()=>{closePause();openMenu();});
+document.getElementById('pmSettings').addEventListener('click',()=>{
+    pausedBySettings=false;
+    if(chatInputEl && document.activeElement===chatInputEl) chatInputEl.blur();
+    document.getElementById('sTurnMode').value=turnMode;
+    document.getElementById('sSens').value=sensitivity; document.getElementById('sSensVal').textContent=sensitivity.toFixed(1);
+    document.getElementById('sZoom').value=zoomLevel;   document.getElementById('sZoomVal').textContent=zoomLevel.toFixed(2)+'×';
+    document.getElementById('sFps').value=fpsCap;       document.getElementById('sFpsVal').textContent=fpsCap;
+    document.getElementById('sFpsUnlimit').value=unlimitFps?'1':'0';
+    document.getElementById('sLogAutoHide').value=logAutoHide?'1':'0';
+    document.getElementById('sLogTimeout').value=Math.round(logInactivityTimeout/1000);
+    document.getElementById('sLogTimeoutVal').textContent=Math.round(logInactivityTimeout/1000)+'s';
+    document.getElementById('sLogFade').value=(logFadeMs/1000).toFixed(1);
+    document.getElementById('sLogFadeVal').textContent=(logFadeMs/1000).toFixed(1)+'s';
+    document.getElementById('sLogTime').value=logShowTimestamps?'1':'0';
+    document.getElementById('sLogMax').value=logMaxMessages;
+    document.getElementById('sLogMaxVal').textContent=logMaxMessages;
+    document.getElementById('settingsOverlay').classList.add('open');
+});
+document.getElementById('pmRestart').addEventListener('click',()=>{closePause();restart();});
+
+// ── UI Layout Customization ────────────────────────────────────────────────
+const UILayout=(function(){
+    const STORAGE_KEY='xpilot_ui_layout_v1';
+    const VERSION=1;
+    const DEFAULTS={
+        topButtons:{left:50,top:1.0,scale:1.0},
+        minimap:{left:1.5,top:1.0,scale:1.0},
+        hud:{left:99,top:1.0,scale:1.0},
+        controls:{left:50,top:94,scale:1.0}
+    };
+    const ANCHORS={topButtons:'50% 0%',minimap:'0% 0%',hud:'100% 0%',controls:'50% 100%'};
+    const LABELS={topButtons:'Top Buttons',minimap:'Minimap',hud:'HUD',controls:'Touch Controls'};
+    let layout=JSON.parse(JSON.stringify(DEFAULTS));
+    let draft=null, editMode=false, dragging=null;
+
+    function el(key){
+        switch(key){
+            case 'topButtons':return document.getElementById('topBtnGroup');
+            case 'minimap':return document.getElementById('minimapWrap');
+            case 'hud':return document.getElementById('info');
+            case 'controls':return document.getElementById('controls');
+        }
+        return null;
+    }
+
+    function load(){
+        try{
+            const raw=localStorage.getItem(STORAGE_KEY);
+            if(raw){
+                const s=JSON.parse(raw);
+                if(s&&s.v===VERSION&&s.l){
+                    for(const k in DEFAULTS){if(s.l[k])layout[k]={...DEFAULTS[k],...s.l[k]};}
+                }
+            }
+        }catch(e){}
+    }
+
+    function saveToDisk(){
+        try{localStorage.setItem(STORAGE_KEY,JSON.stringify({v:VERSION,l:layout}));}catch(e){}
+    }
+
+    function apply(src){
+        for(const k in src){
+            const pos=src[k], e=el(k);
+            if(!e)continue;
+            e.style.position='absolute';
+            e.style.zIndex='110';
+            if(k==='controls'){
+                e.style.left='0';e.style.right='0';
+                e.style.top='auto';e.style.bottom=(100-pos.top)+'%';
+                e.style.transformOrigin='50% 100%';
+                e.style.transform='scale('+pos.scale+')';
+                e.style.pointerEvents='auto';
+            } else {
+                if(k==='hud')e.style.right='auto';
+                e.style.left=pos.left+'%';
+                e.style.top=pos.top+'%';
+                e.style.transformOrigin=ANCHORS[k];
+                let tx='0',ty='0';
+                if(k==='topButtons')tx='-50%';
+                if(k==='hud')tx='-100%';
+                e.style.transform='translate('+tx+','+ty+') scale('+pos.scale+')';
+            }
+        }
+    }
+
+    function applyCurrent(){apply(layout);}
+
+    function clearStyles(){
+        for(const k in DEFAULTS){
+            const e=el(k);if(!e)continue;
+            e.style.position='';e.style.left='';e.style.top='';
+            e.style.transformOrigin='';e.style.transform='';e.style.zIndex='';
+        }
+    }
+
+    function enterEditMode(){
+        if(paused)closePause();
+        editMode=true;
+        draft=JSON.parse(JSON.stringify(layout));
+        document.body.classList.add('ui-editing');
+        apply(draft);
+        document.getElementById('editLayoutToolbar').classList.add('open');
+        const s=draft.topButtons.scale;
+        document.getElementById('editScaleSlider').value=s;
+        document.getElementById('editScaleVal').textContent=s.toFixed(2)+'×';
+    }
+
+    function exitEditMode(){
+        editMode=false;draft=null;dragging=null;
+        document.body.classList.remove('ui-editing');
+        document.getElementById('editLayoutToolbar').classList.remove('open');
+        applyCurrent();
+    }
+
+    function saveDraft(){layout=JSON.parse(JSON.stringify(draft));saveToDisk();exitEditMode();}
+    function cancelEdit(){exitEditMode();}
+    function resetDraft(){
+        draft=JSON.parse(JSON.stringify(DEFAULTS));
+        apply(draft);
+        document.getElementById('editScaleSlider').value=DEFAULTS.topButtons.scale;
+        document.getElementById('editScaleVal').textContent=DEFAULTS.topButtons.scale.toFixed(2)+'×';
+    }
+
+    function applyScale(scale){for(const k in draft)draft[k].scale=scale;apply(draft);}
+
+    function getKeyForTarget(t){
+        if(t.closest('#topBtnGroup'))return'topButtons';
+        if(t.closest('#minimapWrap'))return'minimap';
+        if(t.closest('#info'))return'hud';
+        if(t.closest('#controls'))return'controls';
+        return null;
+    }
+
+    function onDown(e){
+        if(!editMode)return;
+        const t=e.target;
+        const key=getKeyForTarget(t);
+        if(!key)return;
+        e.preventDefault();e.stopPropagation();
+        const cx=e.touches?e.touches[0].clientX:e.clientX;
+        const cy=e.touches?e.touches[0].clientY:e.clientY;
+        dragging={key,sx:cx,sy:cy,ol:draft[key].left,ot:draft[key].top};
+        document.body.style.cursor='grabbing';
+    }
+
+    function onMove(e){
+        if(!dragging||!editMode)return;
+        e.preventDefault();
+        const cx=e.touches?e.touches[0].clientX:e.clientX;
+        const cy=e.touches?e.touches[0].clientY:e.clientY;
+        let nl=dragging.ol+(cx-dragging.sx)/window.innerWidth*100;
+        let nt=dragging.ot+(cy-dragging.sy)/window.innerHeight*100;
+        nl=Math.max(2,Math.min(98,nl));
+        nt=Math.max(2,Math.min(98,nt));
+        draft[dragging.key].left=nl;
+        draft[dragging.key].top=nt;
+        apply(draft);
+    }
+
+    function onUp(){dragging=null;document.body.style.cursor='';}
+
+    document.addEventListener('mousedown',onDown,{passive:false});
+    document.addEventListener('mousemove',onMove,{passive:false});
+    document.addEventListener('mouseup',onUp);
+    document.addEventListener('touchstart',onDown,{passive:false});
+    document.addEventListener('touchmove',onMove,{passive:false});
+    document.addEventListener('touchend',onUp);
+
+    // Block game button clicks during edit mode (but allow toolbar clicks)
+    document.addEventListener('click',function(e){if(editMode&&!e.target.closest('#editLayoutToolbar')){e.stopPropagation();e.preventDefault();}},true);
+
+    // Toolbar buttons
+    document.getElementById('editSaveBtn').addEventListener('click',saveDraft);
+    document.getElementById('editCancelBtn').addEventListener('click',cancelEdit);
+    document.getElementById('editResetBtn').addEventListener('click',resetDraft);
+    document.getElementById('editScaleSlider').addEventListener('input',function(){
+        const v=parseFloat(this.value);
+        document.getElementById('editScaleVal').textContent=v.toFixed(2)+'×';
+        if(editMode&&draft)applyScale(v);
+    });
+
+    // Settings panel button
+    document.getElementById('sEditLayout').addEventListener('click',()=>{closeSettings();enterEditMode();});
+
+    // Global scale slider in settings
+    const gsSlider=document.getElementById('sGlobalScale');
+    const gsVal=document.getElementById('sGlobalScaleVal');
+    if(gsSlider){
+        gsSlider.value=layout.topButtons.scale;
+        gsVal.textContent=layout.topButtons.scale.toFixed(2)+'×';
+        gsSlider.addEventListener('input',function(){
+            const v=parseFloat(this.value);
+            gsVal.textContent=v.toFixed(2)+'×';
+            for(const k in layout)layout[k].scale=v;
+            saveToDisk();applyCurrent();
+        });
+    }
+
+    load();
+    return{applyCurrent,saveToDisk,clearStyles};
+})();
+UILayout.applyCurrent();
+
+// ── Game loop ──────────────────────────────────────────────────────────────
+window.__fatal=null;
+window.onerror=function(msg,src,line,col,err){
+    if(window.__fatal)return false;
+    const detail=(err&&(err.stack||err.message))||msg;
+    window.__fatal=String(detail)+((src&&line)?`\n  at ${src}:${line}`:'');
+    return false;
+};
+window.addEventListener('unhandledrejection',function(ev){
+    if(!window.__fatal)window.__fatal=String((ev.reason&&(ev.reason.stack||ev.reason.message))||ev.reason);
+});
+function renderFatal(){
+    ctx.fillStyle='#0c0c18'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.save(); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#ff5555'; ctx.font=`bold ${Math.max(16,canvas.width/40)}px monospace`;
+    ctx.fillText('FATAL ERROR - GAME HALTED',canvas.width/2,canvas.height/2-70);
+    ctx.fillStyle='#ffd7d7'; ctx.font='12px monospace';
+    const text=String(window.__fatal),maxW=canvas.width-80,lines=[],words=text.split('\n');
+    let cur='';
+    for(const word of words){
+        const probe=cur?cur+' '+word:word;
+        if(ctx.measureText(probe).width>maxW&&cur){lines.push(cur);cur=word;}
+        else cur=probe;
+    }
+    if(cur)lines.push(cur);
+    const startY=canvas.height/2-40;
+    lines.slice(0,16).forEach((ln,i)=>ctx.fillText(ln,canvas.width/2,startY+i*16));
+    if(lines.length>16)ctx.fillText(`... (${lines.length-16} more lines)`,canvas.width/2,startY+16*16);
+    ctx.fillStyle='#8a8a8a'; ctx.font='11px monospace';
+    ctx.fillText('Reload the page to retry',canvas.width/2,canvas.height/2+200);
+    ctx.restore();
+}
+let last=Date.now();
+let rAFLast=0;
+function frameTick(){
+    const now=Date.now(),delta=now-last;
+    const minMs=(!unlimitFps&&fpsCap>0)?1000/fpsCap:0;
+    if(delta<minMs)return;
+    last=now;
+    if(window.__fatal){renderFatal();return;}
+    try{
+        // While the online host has the pause/menu/settings overlay open, keep
+        // simulating so remote clients keep receiving live state/enemy
+        // snapshots — otherwise their screens freeze. The host's own ship is
+        // frozen + invulnerable via `hostMenuPause()` inside update().
+        if(!paused || (netState==='connected' && isHost)){const dt=Math.min(delta/1000,0.05);update(dt);}
+        draw();
+    }catch(e){if(!window.__fatal)window.__fatal=(e&&(e.stack||e.message))||String(e);}
+}
+function loop(){
+    requestAnimationFrame(loop);
+    rAFLast=Date.now();
+    frameTick();
+}
+// Watchdog: browsers stop firing requestAnimationFrame on hidden/background
+// tabs, which silently freezes the whole game loop — including the network
+// heartbeat that tells other players where you are (and stops your own view
+// from updating). Fall back to a timer whenever rAF goes quiet so live player
+// movement keeps flowing even when the tab isn't the active one.
+//
+// setInterval is throttled to ~1 Hz in hidden tabs, so we drive the fallback
+// from a tiny Web Worker instead (worker timers are NOT throttled in hidden
+// tabs) and keep a plain setInterval as a last resort.
+function startHeartbeat(){
+    try{
+        const wb=new Blob(['setInterval(function(){self.postMessage("tick");},33);']);
+        const worker=new Worker(URL.createObjectURL(wb));
+        worker.onmessage=()=>{if(Date.now()-rAFLast>250)frameTick();};
+        if(worker){window.__hbWorker=worker;return;}
+    }catch(e){}
+    setInterval(()=>{if(Date.now()-rAFLast>250)frameTick();},1000/30);
+}
+startHeartbeat();
+// Send one last position snapshot when the tab is hidden so other players
+// still see you at your current spot even before the fallback timer runs.
+document.addEventListener('visibilitychange',()=>{
+    if(document.hidden&&ws&&ws.readyState===WebSocket.OPEN&&player&&Number.isFinite(player.x)){
+        try{ws.send(JSON.stringify({type:'state',id:MY_ID,name:myName,x:player.x,y:player.y,angle:player.angle,vx:player.vx,vy:player.vy,dead:player.dead,fuel:player.fuelState.fuel,maxFuel:player.fuelState.maxFuel,hp:player.hp,maxHp:player.maxHp}));}catch(e){}
+    }
+});
+initGameLog();
+initGame();
+loop();
+</script>
+</body>
+</html>
+ 

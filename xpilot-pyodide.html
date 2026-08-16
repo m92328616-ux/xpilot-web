@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>XPilot - Pyodide</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        body {
+            font-family: Arial, sans-serif;
+            background: #0c0c18;
+            display: flex; justify-content: center; align-items: center; flex-direction: column;
+        }
+        #gameContainer {
+            position: relative; width: 100%; max-width: 900px;
+            aspect-ratio: 4/3; background: #0c0c18;
+            border: 2px solid #444; touch-action: none; display: none;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        #loading { color: #c8c8c8; text-align: center; padding: 20px; }
+        #info {
+            position: absolute; top: 10px; right: 10px;
+            color: #c8c8c8; font-size: 14px; font-family: monospace;
+            z-index: 100; pointer-events: none; text-align: right; line-height: 1.6;
+        }
+        #deadMsg {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%,-50%);
+            color: #dcdcdc; font-size: 18px; text-align: center;
+            background: rgba(0,0,0,0.75); padding: 20px; border-radius: 5px;
+            z-index: 200; pointer-events: none; display: none;
+        }
+        #minimapWrap {
+            position: absolute; top: 10px; left: 10px;
+            z-index: 100; pointer-events: none;
+            background: rgba(0,0,0,0.5); border: 1px solid #555;
+            border-radius: 4px; padding: 3px;
+        }
+        #minimap { display: block; border-radius: 2px; }
+        #minimapLabel { font-family: monospace; font-size: 10px; color: #888; text-align: center; margin-top: 2px; }
+        #controls {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 120px;
+            display: flex; justify-content: space-between; padding: 10px; gap: 10px; pointer-events: none;
+        }
+        .joystick-area {
+            width: 100px; height: 100px; background: rgba(100,100,150,0.3);
+            border: 2px solid #666; border-radius: 50%; pointer-events: auto;
+        }
+        .buttons-area { display: flex; flex-direction: column; gap: 5px; pointer-events: auto; }
+        .control-btn {
+            width: 90px; height: 40px; background: rgba(100,150,100,0.3);
+            border: 2px solid #666; color: #aaa; font-size: 12px; border-radius: 5px;
+            touch-action: none; user-select: none; display: flex; align-items: center; justify-content: center;
+        }
+        .control-btn.shoot { flex: 1; width: 90px; height: auto; min-height: 50px; }
+        /* ── Inline chat / log (issue #37) ──
+           Chat messages are part of the gameplay: no box, no header. The
+           overlay fades out after a configurable period of inactivity and
+           reappears whenever new activity occurs. Readability over any
+           map/background comes from the text shadow, not a solid box. */
+        #inlineChat {
+            position: absolute; left: 12px; bottom: 16px;
+            width: min(400px, 68vw);
+            display: flex; flex-direction: column; gap: 3px;
+            z-index: 130; pointer-events: none;
+            opacity: 0;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.8);
+        }
+        #inlineChatList {
+            display: flex; flex-direction: column; gap: 2px;
+            font-family: monospace; font-size: 12px; line-height: 1.45;
+        }
+        .gl-row { display: flex; align-items: baseline; gap: 6px; }
+        .gl-time { color: #9aa2c8; font-size: 10px; flex-shrink: 0; }
+        .gl-icon { flex-shrink: 0; }
+        .gl-text { color: #eef0ff; word-break: break-word; }
+        #chatInput {
+            pointer-events: auto; margin-top: 3px; width: 100%; box-sizing: border-box;
+            padding: 5px 10px; font-family: monospace; font-size: 13px;
+            background: rgba(10,10,28,0.75); color: #e8e8f0;
+            border: 1px solid rgba(90,90,150,0.5); border-radius: 5px; outline: none;
+        }
+        #chatInput:focus { border-color: #6080ff; }
+        #chatInput::placeholder { color: #8a92b8; }
+        /* ── Chat / Log settings (issue #37) ── */
+        #settingsBtn {
+            position: absolute; top: 8px; right: 10px; z-index: 500;
+            width: 34px; height: 34px; background: rgba(20,20,42,0.7);
+            border: 1px solid #4a4a8a; border-radius: 6px; color: #a0b0ff;
+            font-size: 17px; cursor: pointer; font-family: monospace; line-height: 1;
+        }
+        #settingsBtn:hover { background: #2a2a5a; color: #fff; }
+        #settingsOverlay { display: none; position: fixed; inset: 0; z-index: 600; background: rgba(0,0,0,0.65); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
+        #settingsOverlay.open { display: flex; }
+        #settingsPanel { background: #14142a; border: 1px solid #3a3a6a; border-radius: 10px; padding: 24px 28px; width: min(440px,94vw); max-height: 90vh; overflow-y: auto; color: #d0d0e8; font-family: monospace; position: relative; }
+        #settingsPanel h2 { font-size: 17px; color: #a0b0ff; margin-bottom: 18px; letter-spacing: 1px; text-transform: uppercase; }
+        .s-close { position: absolute; top: 14px; right: 16px; background: none; border: none; color: #888; font-size: 22px; cursor: pointer; line-height: 1; }
+        .s-close:hover { color: #fff; }
+        .s-section { font-size: 11px; color: #6070a0; letter-spacing: 1px; text-transform: uppercase; margin: 18px 0 8px; border-bottom: 1px solid #2a2a50; padding-bottom: 4px; }
+        .s-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+        .s-row label { font-size: 13px; color: #b0b8d8; flex: 1; }
+        .s-row .s-val { font-size: 12px; color: #7080c0; min-width: 48px; text-align: right; }
+        .s-row input[type=range] { flex: 2; accent-color: #6080ff; height: 4px; cursor: pointer; }
+        .s-row select { flex: 2; background: #0e0e22; border: 1px solid #3a3a6a; color: #d0d0f0; padding: 5px 8px; border-radius: 4px; font-family: monospace; font-size: 13px; cursor: pointer; }
+        .s-btn { padding: 8px 14px; background: #2a2a5a; border: 1px solid #4a4a8a; color: #a0b0ff; border-radius: 5px; cursor: pointer; font-family: monospace; font-size: 13px; }
+        .s-btn:hover { background: #3a3a7a; color: #fff; }
+        .s-btn.primary { background: #304090; border-color: #6080ff; }
+        .s-btn.primary:hover { background: #405098; }
+        @media (max-width: 480px) { #info { font-size: 12px; } .control-btn { width: 70px; font-size: 11px; } }
+    </style>
+</head>
+<body>
+<div id="loading">Loading Pyodide and Python runtime...</div>
+<div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    <div id="minimapWrap">
+        <canvas id="minimap" width="150" height="113"></canvas>
+        <div id="minimapLabel">minimap</div>
+    </div>
+    <div id="info">
+        Score: <span id="score">0</span><br>
+        <div style="margin-top:6px;font-size:13px;color:#9aa2c8">Difficulty: <span id="difficultyLabel">Normal</span></div>
+        <span style="color:#c87878">● circle</span> 10pts&nbsp;
+        <span style="color:#f0a050">▲ shooter</span> 20pts&nbsp;
+        <span style="color:#b07fe0">■ tank</span> 50pts<br>
+        <span id="hpLine" style="display:none;">HP: <span id="hpValue">3/3</span></span><br>
+        <span id="connStatus" style="color:#888">Offline (single player)</span>
+        <span id="playerCount"></span><br>
+        <button id="pvpBtn" style="margin-top:4px;padding:2px 8px;font-family:monospace;font-size:12px;cursor:pointer;background:#333;color:#ccc;border:1px solid #666;border-radius:3px;">PvP: OFF</button>
+    </div>
+    <div id="deadMsg">You Died<br>Press R to restart</div>
+    <div id="killFeed" style="position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:150;pointer-events:none;font-family:monospace;font-size:12px;color:#e8e8e8;text-align:center;text-shadow:0 1px 2px #000;"></div>
+    <!-- Inline chat / log (issue #37): part of the game view, auto-fades. -->
+    <div id="inlineChat">
+        <div id="inlineChatList"></div>
+        <input id="chatInput" type="text" maxlength="240" placeholder="Chat (T) — press Enter to send" autocomplete="off">
+    </div>
+    <button id="settingsBtn" title="Chat / Log settings (pauses game)">⚙</button>
+    <!-- Chat / Log settings overlay (issue #37) -->
+    <div id="settingsOverlay">
+        <div id="settingsPanel">
+            <button class="s-close" id="settingsClose">✕</button>
+            <h2>⚙ Settings</h2>
+            <div class="s-section">Chat / Log</div>
+            <div class="s-row"><label>Auto-hide chat</label><select id="sLogAutoHide"><option value="1">On</option><option value="0">Off (always visible)</option></select></div>
+            <div class="s-row"><label>Hide after</label><input type="range" id="sLogTimeout" min="2" max="30" step="1" value="6"><span class="s-val" id="sLogTimeoutVal">6s</span></div>
+            <div class="s-row"><label>Fade duration</label><input type="range" id="sLogFade" min="0.1" max="2" step="0.1" value="0.4"><span class="s-val" id="sLogFadeVal">0.4s</span></div>
+            <div class="s-row"><label>Timestamps</label><select id="sLogTime"><option value="1">On</option><option value="0">Off</option></select></div>
+            <div class="s-row"><label>Max messages</label><input type="range" id="sLogMax" min="20" max="200" step="10" value="60"><span class="s-val" id="sLogMaxVal">60</span></div>
+            <br>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+                <button class="s-btn" id="sReset">Reset defaults</button>
+                <button class="s-btn primary" id="sApply">Apply &amp; close</button>
+            </div>
+        </div>
+    </div>
+    <div id="controls">
+        <div class="joystick-area" id="joystick"></div>
+        <div class="buttons-area">
+            <button class="control-btn" id="thrustBtn">Thrust</button>
+            <button class="control-btn shoot" id="shootBtn">SHOOT</button>
+            <button class="control-btn" id="restartBtn" style="display:none;">Restart</button>
+        </div>
+    </div>
+</div>
+
+<script async src="https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js"></script>
+<script src="./pvp-system.js"></script>
+<script src="./game-log.js"></script>
+<script>
+async function main() {
+    // The pyodide.js <script> above is async; wait for it to finish loading
+    // before touching loadPyodide() (otherwise we get a ReferenceError race).
+    for (let i = 0; i < 400 && typeof loadPyodide === 'undefined'; i++) {
+        await new Promise(r => setTimeout(r, 100));
+    }
+    if (typeof loadPyodide === 'undefined') throw new Error('Pyodide script failed to load');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx    = canvas.getContext('2d');
+    const gc     = document.getElementById('gameContainer');
+    const mm     = document.getElementById('minimap');
+    const mctx   = mm.getContext('2d');
+
+    function resize() {
+        const r = gc.getBoundingClientRect();
+        canvas.width = r.width; canvas.height = r.height;
+    }
+
+    let pyodide = await loadPyodide();
+
+    const pythonCode = `
+import math, random
+
+WORLD_W, WORLD_H = 3200, 2400
+VIEW_W,  VIEW_H  = 800,  600
+N_CIRCLES  = 14
+N_SHOOTERS = 8
+N_TANKS    = 5
+
+# PvP constants (kept in sync with pvp-system.js on the JS side)
+PLAYER_MAX_HP = 3
+RAM_DAMAGE = 1
+RAM_COOLDOWN = 2.0
+
+def wrap(v, size): return v % size
+
+class Player:
+    def __init__(self):
+        self.x=WORLD_W/2; self.y=WORLD_H/2
+        self.vx=self.vy=self.angle=self.thrust=0
+        self.dead=False
+        self.hp=PLAYER_MAX_HP; self.max_hp=PLAYER_MAX_HP
+    def update(self, dt):
+        self.vx += math.cos(self.angle)*self.thrust*dt
+        self.vy += math.sin(self.angle)*self.thrust*dt
+        self.vx *= 0.995; self.vy *= 0.995
+        self.x = wrap(self.x + self.vx*dt, WORLD_W)
+        self.y = wrap(self.y + self.vy*dt, WORLD_H)
+
+class Bullet:
+    def __init__(self, x, y, vx, vy, life=2.2):
+        self.x=x; self.y=y; self.vx=vx; self.vy=vy; self.life=life
+    def update(self, dt):
+        self.x=wrap(self.x+self.vx*dt, WORLD_W)
+        self.y=wrap(self.y+self.vy*dt, WORLD_H)
+        self.life-=dt
+
+# ── Entity base & subtypes ────────────────────────────────────────────────
+
+class Circle:
+    kind='circle'; pts=10; max_hp=1
+    def __init__(self):
+        a=random.uniform(0,math.tau); sp=random.uniform(20,80)
+        self.x=random.uniform(0,WORLD_W); self.y=random.uniform(0,WORLD_H)
+        self.vx=math.cos(a)*sp; self.vy=math.sin(a)*sp
+        self.r=random.randint(10,26)
+        try: d = float(DIFFICULTY)
+        except NameError: d = 1.0
+        self.hp = max(1, int(round(self.max_hp * d)))
+        self.hit_flash=0.0
+    def update(self, dt, player, enemy_bullets):
+        self.x=wrap(self.x+self.vx*dt,WORLD_W)
+        self.y=wrap(self.y+self.vy*dt,WORLD_H)
+        if self.hit_flash>0: self.hit_flash-=dt
+    def spawn(): return Circle()
+
+class Shooter:
+    kind='shooter'; pts=20; max_hp=3
+    def __init__(self):
+        a=random.uniform(0,math.tau); sp=random.uniform(15,35)
+        self.x=random.uniform(0,WORLD_W); self.y=random.uniform(0,WORLD_H)
+        self.vx=math.cos(a)*sp; self.vy=math.sin(a)*sp
+        self.r=13; self.angle=a
+        self.fire_cool=0.7+random.uniform(0,0.6)
+        try: d = float(DIFFICULTY)
+        except NameError: d = 1.0
+        self.hp = max(1, int(round(self.max_hp * d)))
+        self.hit_flash=0.0
+    def update(self, dt, player, enemy_bullets):
+        self.x=wrap(self.x+self.vx*dt,WORLD_W)
+        self.y=wrap(self.y+self.vy*dt,WORLD_H)
+        if self.hit_flash>0: self.hit_flash-=dt
+        # Only react to the player when within the visible viewport range
+        dx_abs = abs(((player.x-self.x)+WORLD_W/2)%WORLD_W - WORLD_W/2)
+        dy_abs = abs(((player.y-self.y)+WORLD_H/2)%WORLD_H - WORLD_H/2)
+        visible = dx_abs <= VIEW_W/2 and dy_abs <= VIEW_H/2
+        if visible:
+            # rotate toward player (wrap-aware)
+            tdx = ((player.x-self.x)+WORLD_W/2)%WORLD_W - WORLD_W/2
+            tdy = ((player.y-self.y)+WORLD_H/2)%WORLD_H - WORLD_H/2
+            target = math.atan2(tdy,tdx)
+            da = (target-self.angle+math.pi)%(math.tau)-math.pi
+            self.angle += math.copysign(min(abs(da),1.2*dt),da)
+        # cooldown always ticks; only fires when visible
+        self.fire_cool -= dt
+        if self.fire_cool<=0 and visible and not player.dead:
+            self.fire_cool=0.7+random.uniform(0,0.6)
+            sp=160
+            enemy_bullets.append(Bullet(
+                self.x+math.cos(self.angle)*(self.r+4),
+                self.y+math.sin(self.angle)*(self.r+4),
+                math.cos(self.angle)*sp, math.sin(self.angle)*sp, life=5))
+    def spawn(): return Shooter()
+
+class Tank:
+    kind='tank'; pts=50; max_hp=6
+    def __init__(self):
+        a=random.uniform(0,math.tau); sp=random.uniform(8,20)
+        self.x=random.uniform(0,WORLD_W); self.y=random.uniform(0,WORLD_H)
+        self.vx=math.cos(a)*sp; self.vy=math.sin(a)*sp
+        self.r=random.randint(22,32)
+        try: d = float(DIFFICULTY)
+        except NameError: d = 1.0
+        self.hp = max(1, int(round(self.max_hp * d)))
+        self.hit_flash=0.0
+    def update(self, dt, player, enemy_bullets):
+        self.x=wrap(self.x+self.vx*dt,WORLD_W)
+        self.y=wrap(self.y+self.vy*dt,WORLD_H)
+        if self.hit_flash>0: self.hit_flash-=dt
+    def spawn(): return Tank()
+
+SPAWNERS = {'circle': Circle, 'shooter': Shooter, 'tank': Tank}
+
+def make_game():
+    return {
+        'player':  Player(),
+        'pbullets': [],
+        'ebullets': [],
+        'entities': (
+            [Circle()  for _ in range(N_CIRCLES)] +
+            [Shooter() for _ in range(N_SHOOTERS)] +
+            [Tank()    for _ in range(N_TANKS)]
+        ),
+        'score': 0, 'cool': 0, 'keys': {}, 'just_shot': None,
+    }
+
+game = make_game()
+
+def reset_game():
+    global game; game = make_game()
+
+def force_reset():
+    global game; game = make_game()
+
+def get_player_dead():
+    return game['player'].dead
+
+def set_spawn(x, y):
+    p=game['player']; p.x=x; p.y=y; p.vx=p.vy=p.thrust=0
+
+def set_player_hp(hp, dead):
+    p=game['player']
+    p.hp=max(0, min(p.max_hp, int(hp)))
+    p.dead=bool(dead)
+
+def set_key(key, pressed):
+    game['keys'][key]=pressed
+    if key=='r' and pressed and game['player'].dead: reset_game()
+
+def update(dt):
+    p=game['player']
+    game['just_shot']=None
+    p.thrust=0
+    if game['keys'].get('up'):    p.thrust=200
+    if game['keys'].get('left'):  p.angle -= 3*dt
+    if game['keys'].get('right'): p.angle += 3*dt
+    game['cool'] -= dt
+    if game['keys'].get('space') and game['cool']<=0 and not p.dead:
+        game['cool']=0.15; sp=400
+        bx=p.x+math.cos(p.angle)*16; by=p.y+math.sin(p.angle)*16
+        bvx=p.vx+math.cos(p.angle)*sp; bvy=p.vy+math.sin(p.angle)*sp
+        game['pbullets'].append(Bullet(bx, by, bvx, bvy))
+        game['just_shot']=(bx, by, bvx, bvy)
+    if not p.dead: p.update(dt)
+
+    for b in game['pbullets'][:]:
+        b.update(dt)
+        if b.life<=0: game['pbullets'].remove(b)
+    for b in game['ebullets'][:]:
+        b.update(dt)
+        if b.life<=0: game['ebullets'].remove(b)
+
+    for e in game['entities']:
+        e.update(dt, p, game['ebullets'])
+
+    # Player vs entity body
+    if not p.dead:
+        for e in game['entities']:
+            if math.hypot(p.x-e.x,p.y-e.y)<e.r+8:
+                p.dead=True; break
+
+    # Player vs enemy bullets
+    if not p.dead:
+        for b in game['ebullets']:
+            if math.hypot(p.x-b.x,p.y-b.y)<10:
+                p.dead=True; break
+
+    # Player bullets vs entities (hp-based damage)
+    for b in game['pbullets'][:]:
+        for i,e in enumerate(game['entities']):
+            if math.hypot(b.x-e.x,b.y-e.y)<e.r:
+                e.hp-=1
+                e.hit_flash=0.15
+                try: game['pbullets'].remove(b)
+                except ValueError: pass
+                if e.hp<=0:
+                    game['score']+=e.pts
+                    game['entities'][i]=SPAWNERS[e.kind]()
+                break
+
+def draw():
+    p=game['player']
+    return {
+        'px':p.x,'py':p.y,'pa':p.angle,'dead':p.dead,
+        'pvx':p.vx,'pvy':p.vy,
+        'pbullets':[[b.x,b.y] for b in game['pbullets']],
+        'ebullets':[[b.x,b.y] for b in game['ebullets']],
+        'entities':[[e.x,e.y,e.r,e.kind,getattr(e,'angle',0.0),e.hp,e.max_hp,e.hit_flash] for e in game['entities']],
+        'score':game['score'],
+        'hp':p.hp, 'max_hp':p.max_hp,
+        'just_shot': list(game['just_shot']) if game['just_shot'] else None,
+    }
+`;
+
+    // Expose a browser-controlled difficulty multiplier to the Python simulation
+    let DIFFICULTY = (function(){
+        const urlVal = Number(new URLSearchParams(location.search).get('difficulty'));
+        if(isFinite(urlVal) && urlVal>0) return urlVal;
+        try{ const s = localStorage.getItem('xp_difficulty'); if(s) return Number(s); }catch(e){}
+        return 1.0;
+    })();
+    pyodide.globals.set('DIFFICULTY', DIFFICULTY);
+    pyodide.runPython(pythonCode);
+    document.getElementById('loading').style.display='none';
+    document.getElementById('gameContainer').style.display='block';
+    resize();
+    window.addEventListener('resize', resize);
+
+    // update HUD label
+    const pyLabel = document.getElementById('difficultyLabel');
+    if(pyLabel){
+        pyLabel.textContent = (function(d){ if(d>=1.2) return 'Hard'; if(d<=0.9) return 'Easy'; return 'Normal'; })(DIFFICULTY);
+    }
+
+    const pyUpdate = pyodide.globals.get('update');
+    const pyDraw   = pyodide.globals.get('draw');
+    const pySetKey = pyodide.globals.get('set_key');
+    const pyForceReset = pyodide.globals.get('force_reset');
+    const pyGetDead    = pyodide.globals.get('get_player_dead');
+    const pySetSpawn   = pyodide.globals.get('set_spawn');
+    const pySetPlayerHp= pyodide.globals.get('set_player_hp');
+
+    // ── Input ─────────────────────────────────────────────────────────────
+    const joystickEl = document.getElementById('joystick');
+    let touch = { left:0, right:0, thrust:false, shoot:false };
+
+    joystickEl.addEventListener('touchstart', e => updateJoy(e.touches[0]));
+    joystickEl.addEventListener('touchmove',  e => updateJoy(e.touches[0]));
+    joystickEl.addEventListener('touchend',   () => { touch.left=touch.right=0; });
+    function updateJoy(t) {
+        const r=joystickEl.getBoundingClientRect();
+        const dx=t.clientX-(r.left+r.width/2), dy=t.clientY-(r.top+r.height/2);
+        if (Math.hypot(dx,dy)>r.width*0.15) {
+            const a=Math.atan2(dy,dx); touch.left=Math.cos(a); touch.right=Math.sin(a);
+        }
+    }
+    document.getElementById('thrustBtn').addEventListener('touchstart',()=>{touch.thrust=true;});
+    document.getElementById('thrustBtn').addEventListener('touchend',  ()=>{touch.thrust=false;});
+    document.getElementById('shootBtn').addEventListener('touchstart', e=>{e.preventDefault();touch.shoot=true;});
+    document.getElementById('shootBtn').addEventListener('touchend',   e=>{e.preventDefault();touch.shoot=false;});
+    document.getElementById('restartBtn').addEventListener('touchstart',()=>{doRestart();});
+    document.getElementById('pvpBtn').addEventListener('click',()=>{setPvpMode(!pvpMode);});
+
+    const keyMap = {
+        'ArrowUp':'up','w':'up','W':'up',
+        'ArrowLeft':'left','a':'left','A':'left',
+        'ArrowRight':'right','d':'right','D':'right',
+        ' ':'space','Space':'space','r':'r','R':'r'
+    };
+    window.addEventListener('keydown',e=>{
+        if(e.target && e.target.tagName && String(e.target.tagName).toLowerCase()==='input'){
+            // Don't fire game shortcuts while typing in the chat box.
+            if(e.key==='Escape')e.target.blur();
+            return;
+        }
+        if(document.getElementById('settingsOverlay').classList.contains('open')){
+            // Settings are modal: Esc closes, all other keys are ignored.
+            if(e.key==='Escape') closeSettings();
+            e.preventDefault();
+            return;
+        }
+        if(e.key==='t'||e.key==='T'){
+            // The auto-hidden overlay uses display:none, so wake it before
+            // requesting focus on the chat input.
+            if(gameLog) gameLog.poke();
+            const ci=document.getElementById('chatInput'); if(ci)ci.focus();
+            e.preventDefault(); return;
+        }
+        if(e.key==='r'||e.key==='R'){ doRestart(); return; }
+        if(e.key==='v'||e.key==='V'){ setPvpMode(!pvpMode); return; }
+        if(keyMap[e.key]) pySetKey(keyMap[e.key],true);
+    });
+    window.addEventListener('keyup',  e=>{if(keyMap[e.key]) pySetKey(keyMap[e.key],false);});
+
+    // ── Multiplayer networking ───────────────────────────────────────────
+    const MY_ID = 'p_' + Math.random().toString(36).slice(2, 10);
+    let myName = 'Pilot-' + MY_ID.slice(2, 6);
+    let remotePlayers = {};   // id -> { x, y, angle, dead, name, lastUpdate }
+    let remoteBullets = [];   // bullets fired by other players (cosmetic only)
+    let ws = null;
+
+    // ── Inline chat / log (issue #37) ─────────────────────────────────────
+    // On-screen log fed by server-authored "game_event" messages (join/leave/
+    // death/chat) plus local single-player events. Rendered inline in the
+    // game view; fades out after a configurable period of inactivity and
+    // reappears on activity. See game-log.js for the LogBuffer / InlineChatUI
+    // implementation.
+    const LOG_DEFAULTS = { maxMessages: 60, showTimestamps: true, autoHide: true, inactivityTimeout: 3000, fadeMs: 400 };
+    let logMaxMessages = LOG_DEFAULTS.maxMessages, logShowTimestamps = LOG_DEFAULTS.showTimestamps,
+        logAutoHide = LOG_DEFAULTS.autoHide, logInactivityTimeout = LOG_DEFAULTS.inactivityTimeout,
+        logFadeMs = LOG_DEFAULTS.fadeMs;
+    let paused = false;
+    const gameLog = GameLog.createInlineUI({
+        maxMessages: logMaxMessages,
+        showTimestamps: logShowTimestamps,
+        myId: MY_ID,
+        autoHide: logAutoHide,
+        inactivityTimeout: logInactivityTimeout,
+        fadeInMs: logFadeMs,
+        fadeOutMs: logFadeMs,
+        rootEl: document.getElementById('inlineChat'),
+        listEl: document.getElementById('inlineChatList'),
+        inputEl: document.getElementById('chatInput'),
+    });
+    function applyLogSettings(){
+        gameLog.setMaxMessages(logMaxMessages);
+        gameLog.setShowTimestamps(logShowTimestamps);
+        gameLog.setAutoHide(logAutoHide);
+        gameLog.setInactivityTimeout(logInactivityTimeout);
+        gameLog.setFadeDurations(logFadeMs, logFadeMs);
+    }
+    applyLogSettings();
+    function syncSettingsUI(){
+        document.getElementById('sLogAutoHide').value=logAutoHide?'1':'0';
+        document.getElementById('sLogTimeout').value=Math.round(logInactivityTimeout/1000);
+        document.getElementById('sLogTimeoutVal').textContent=Math.round(logInactivityTimeout/1000)+'s';
+        document.getElementById('sLogFade').value=(logFadeMs/1000).toFixed(1);
+        document.getElementById('sLogFadeVal').textContent=(logFadeMs/1000).toFixed(1)+'s';
+        document.getElementById('sLogTime').value=logShowTimestamps?'1':'0';
+        document.getElementById('sLogMax').value=logMaxMessages;
+        document.getElementById('sLogMaxVal').textContent=logMaxMessages;
+    }
+    function openSettings(){
+        paused = true;
+        // Drop focus from the chat input so keys don't land in the box
+        // behind the modal (issue #37).
+        const ci = document.getElementById('chatInput');
+        if (ci && document.activeElement === ci) ci.blur();
+        syncSettingsUI();
+        document.getElementById('settingsOverlay').classList.add('open');
+    }
+    function closeSettings(){
+        document.getElementById('settingsOverlay').classList.remove('open');
+        paused = false;
+    }
+    function applySettings(){
+        logAutoHide          = document.getElementById('sLogAutoHide').value==='1';
+        logInactivityTimeout = parseInt(document.getElementById('sLogTimeout').value,10)*1000;
+        logFadeMs            = Math.round(parseFloat(document.getElementById('sLogFade').value)*1000);
+        logShowTimestamps    = document.getElementById('sLogTime').value==='1';
+        logMaxMessages       = parseInt(document.getElementById('sLogMax').value,10);
+        applyLogSettings();
+        closeSettings();
+    }
+    function resetDefaults(){
+        logAutoHide=LOG_DEFAULTS.autoHide; logInactivityTimeout=LOG_DEFAULTS.inactivityTimeout;
+        logFadeMs=LOG_DEFAULTS.fadeMs; logShowTimestamps=LOG_DEFAULTS.showTimestamps;
+        logMaxMessages=LOG_DEFAULTS.maxMessages;
+        applyLogSettings();
+        openSettings();
+    }
+    document.getElementById('settingsBtn').addEventListener('click', openSettings);
+    document.getElementById('settingsClose').addEventListener('click', closeSettings);
+    document.getElementById('sApply').addEventListener('click', applySettings);
+    document.getElementById('sReset').addEventListener('click', resetDefaults);
+    document.getElementById('settingsOverlay').addEventListener('click', e=>{
+        if(e.target === document.getElementById('settingsOverlay')) closeSettings();
+    });
+    const sliderSync=(id,vid,fmt)=>{const e=document.getElementById(id),v=document.getElementById(vid);e.addEventListener('input',()=>v.textContent=fmt(e.value));};
+    sliderSync('sLogTimeout','sLogTimeoutVal',v=>v+'s');
+    sliderSync('sLogFade','sLogFadeVal',v=>parseFloat(v).toFixed(1)+'s');
+    sliderSync('sLogMax','sLogMaxVal',v=>v);
+    const chatInputEl = document.getElementById('chatInput');
+    chatInputEl.addEventListener('keydown', e => {
+        if(e.key === 'Enter'){
+            const text = chatInputEl.value.trim();
+            if(text) sendChat(text);
+            chatInputEl.value = '';
+            e.preventDefault();
+        } else if(e.key === 'Escape'){
+            chatInputEl.blur();
+        }
+    });
+    function sendChat(text){
+        const t = String(text || '').slice(0, 240).trim();
+        if(!t) return;
+        if(ws && ws.readyState === WebSocket.OPEN){
+            // Online: the relay authors the "chat" game_event and echoes it
+            // back to every client (including us), so we don't log it locally.
+            try { ws.send(JSON.stringify({type:'chat', id:MY_ID, text:t})); } catch(e) {}
+        } else {
+            // Offline / single player: echo into the local log only.
+            gameLog.push({event:'chat', id:MY_ID, name:myName, text:t});
+        }
+    }
+    function onLocalDeath(){
+        if(pvpMode && ws && ws.readyState === WebSocket.OPEN) return; // relay logs it
+        gameLog.push({ event:'death', id:MY_ID, name:myName, killer:'' });
+    }
+    // ── PvP state (issue #10) ─────────────────────────────────────────────
+    const PVP_MAX_HP = PvPSystem.PLAYER_MAX_HP;
+    let pvpMode = false;
+    let allKnownIds = new Set([MY_ID]);
+    let isHost = true;
+    let playersHP = {};       // host-authoritative {id: {hp,maxHp,dead}}
+    let ramCooldowns = {};    // {remoteId: timeLeft} to avoid repeated ram damage
+    let killFeed = [];        // {killer, target, t} latest eliminations
+    let netState = 'offline';
+    const STATE_SEND_HZ = 15;
+    let stateSendAccum = 0;
+    const REMOTE_TIMEOUT = 8.0;
+    const WORLD_W=3200, WORLD_H=2400;
+    function normAngleDiff(da){return((da+Math.PI)%(Math.PI*2)+Math.PI*2)%(Math.PI*2)-Math.PI;}
+    // Render pose for a network-interpolated remote player. Returns null when
+    // there is no interpolation segment yet (fresh / not yet synced), in which
+    // case callers fall back to raw x/y/angle.
+    // NOTE: _lerp is a number in [0,1]; 0 is a valid freshly-started segment,
+    // so it must NOT be tested with truthiness (!!0 === false) — that caused
+    // remote players to snap to the raw snapshot position on the frame after
+    // each network update and twitch back and forth.
+    function renderPose(o){
+        if(typeof o._lerp!=='number'||!Number.isFinite(o._prevX)||!Number.isFinite(o._prevY))return null;
+        const l=Math.min(1,o._lerp);
+        return{
+            x:o._prevX+wrapDelta(o._prevX,o.x,WORLD_W)*l,
+            y:o._prevY+wrapDelta(o._prevY,o.y,WORLD_H)*l,
+            a:o._prevAngle+normAngleDiff((o.angle||0)-o._prevAngle)*l,
+        };
+    }
+
+    function setConnStatus(state, text) {
+        netState = state;
+        const el = document.getElementById('connStatus');
+        el.textContent = text;
+        el.style.color = state === 'connected'  ? '#7fdc8f'
+                        : state === 'connecting' ? '#e0c060'
+                        : state === 'error'      ? '#e07070'
+                        :                           '#888';
+    }
+
+    function reelectHost(){ isHost = ([...allKnownIds].sort()[0] === MY_ID); }
+
+    function playerDisplayName(id){
+        if (id === MY_ID) return myName;
+        const rp = remotePlayers[id];
+        return (rp && rp.name) || String(id).slice(0,6);
+    }
+
+    function showKillFeed(killer, target){
+        killFeed.push({killer, target, t: 4.0});
+        if (killFeed.length > 5) killFeed.shift();
+    }
+
+    function setPvpMode(v){
+        pvpMode = !!v;
+        const btn = document.getElementById('pvpBtn');
+        if (btn) btn.textContent = 'PvP: ' + (pvpMode ? 'ON' : 'OFF');
+        document.getElementById('hpLine').style.display = pvpMode ? '' : 'none';
+        const spawn = pvpMode ? PvPSystem.spawnPointForId(MY_ID, WORLD_W, WORLD_H) : {x:WORLD_W/2, y:WORLD_H/2};
+        pySetSpawn(spawn.x, spawn.y);
+        pySetPlayerHp(PVP_MAX_HP, false);
+        if (pvpMode && isHost) playersHP[MY_ID] = PvPSystem.createPlayerHPState();
+    }
+
+    // Host-authoritative PvP: only the host applies damage and broadcasts the
+    // resulting HP; every other client reports hits and waits for the reply.
+    function applyDamageLocal(targetId, dmg, killerId){
+        if (!playersHP[targetId]) playersHP[targetId] = PvPSystem.createPlayerHPState();
+        const res = PvPSystem.applyPlayerDamage(playersHP[targetId], dmg);
+        const hp = playersHP[targetId].hp, dead = playersHP[targetId].dead;
+        if (targetId === MY_ID) { pySetPlayerHp(hp, dead); }
+        else { const rp = remotePlayers[targetId]; if (rp) { rp.hp = hp; rp.dead = dead; } }
+        try { ws.send(JSON.stringify({type:'player_hp', id:targetId, hp:hp, dead:!!dead, killer:killerId})); } catch(e) {}
+        if (res.lethal) showKillFeed(killerId, targetId);
+    }
+
+    function reportHit(targetId, dmg, killerId){
+        if (!pvpMode || !ws || ws.readyState !== WebSocket.OPEN) return;
+        if (isHost) applyDamageLocal(targetId, dmg, killerId);
+        else { try { ws.send(JSON.stringify({type:'player_hit', id:killerId, target:targetId, dmg:dmg})); } catch(e) {} }
+    }
+
+    function doRestart(){
+        if (!pyGetDead()) return; // R only restarts after death (same as single player)
+        pyForceReset();
+        document.getElementById('restartBtn').style.display='none';
+        if (pvpMode) {
+            const spawn = PvPSystem.spawnPointForId(MY_ID, WORLD_W, WORLD_H);
+            pySetSpawn(spawn.x, spawn.y);
+            pySetPlayerHp(PVP_MAX_HP, false);
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                if (!isHost) { try { ws.send(JSON.stringify({type:'player_respawn', id:MY_ID})); } catch(e) {} }
+                else if (playersHP[MY_ID]) playersHP[MY_ID] = PvPSystem.createPlayerHPState();
+            }
+        }
+    }
+
+    function wsUrlGuess() {
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = location.hostname || 'localhost';
+        return `${proto}//${host}:8765`;
+    }
+
+    function connectMultiplayer(url) {
+        if (ws) { try { ws.close(); } catch (e) {} }
+        setConnStatus('connecting', 'Connecting...');
+        try {
+            ws = new WebSocket(url);
+        } catch (e) {
+            setConnStatus('error', 'Connection failed');
+            return;
+        }
+        ws.onopen = () => {
+            setConnStatus('connected', 'Connected');
+            ws.send(JSON.stringify({ type: 'join', id: MY_ID, name: myName }));
+        };
+        ws.onmessage = (ev) => {
+            let msg;
+            try { msg = JSON.parse(ev.data); } catch (e) { return; }
+            handleNetMessage(msg);
+        };
+        ws.onerror = () => { setConnStatus('error', 'Connection error'); };
+        ws.onclose = () => {
+            if (netState !== 'error') setConnStatus('offline', 'Offline (single player)');
+        };
+    }
+
+    function handleNetMessage(msg) {
+        if (!msg || !msg.type) return;
+        // In-game chat/log (issue #32): server-authored events + late-joiner replay.
+        if (msg.type === 'log_history') { if (gameLog) gameLog.loadHistory(msg.events || []); return; }
+        if (msg.type === 'game_event') { if (gameLog) gameLog.push(msg); return; }
+        if (msg.type === 'roster') {
+            (msg.players || []).forEach(p => {
+                if (p.id === MY_ID) return;
+                allKnownIds.add(p.id);
+                upsertRemote(p.id, p.name, p.state);
+            });
+            reelectHost();
+            updatePlayerCount();
+            return;
+        }
+        if (msg.type === 'player_joined') {
+            if (msg.id === MY_ID) return;
+            allKnownIds.add(msg.id);
+            reelectHost();
+            if (!remotePlayers[msg.id]) {
+                remotePlayers[msg.id] = {
+                    x: 1600, y: 1200, angle: 0, dead: false,
+                    name: msg.name || msg.id.slice(0, 6),
+                    lastUpdate: performance.now() / 1000,
+                };
+            }
+            if (pvpMode && isHost) playersHP[msg.id] = PvPSystem.createPlayerHPState();
+            updatePlayerCount();
+            return;
+        }
+        if (msg.type === 'player_left') {
+            allKnownIds.delete(msg.id);
+            reelectHost();
+            delete remotePlayers[msg.id];
+            if (pvpMode && isHost) delete playersHP[msg.id];
+            updatePlayerCount();
+            return;
+        }
+        if (msg.type === 'state') {
+            if (msg.id === MY_ID) return;
+            if (!allKnownIds.has(msg.id)) { allKnownIds.add(msg.id); reelectHost(); }
+            upsertRemote(msg.id, msg.name, msg);
+            return;
+        }
+        if (msg.type === 'shoot') {
+            if (msg.id === MY_ID) return;
+            remoteBullets.push({ x: msg.x, y: msg.y, vx: msg.vx, vy: msg.vy, life: 2.2, owner: msg.id });
+            return;
+        }
+        if (msg.type === 'player_hit') {
+            if (!pvpMode || !isHost) return;
+            const target = msg.target, attacker = msg.id, dmg = msg.dmg || 1;
+            if (!target) return;
+            applyDamageLocal(target, dmg, attacker);
+            return;
+        }
+        if (msg.type === 'player_hp') {
+            if (!pvpMode) return;
+            const pid = msg.id; if (!pid) return;
+            if (pid === MY_ID) {
+                pySetPlayerHp(msg.hp, !!msg.dead);
+                if (msg.dead) showKillFeed(msg.killer, pid);
+            } else {
+                const rp = remotePlayers[pid];
+                if (rp) { rp.hp = msg.hp; rp.dead = !!msg.dead; }
+            }
+            if (isHost && playersHP[pid]) { playersHP[pid].hp = msg.hp; playersHP[pid].dead = !!msg.dead; }
+            if (msg.dead && pid !== MY_ID) showKillFeed(msg.killer, pid);
+            return;
+        }
+        if (msg.type === 'player_respawn') {
+            if (!pvpMode) return;
+            const pid = msg.id; if (!pid) return;
+            if (isHost) {
+                playersHP[pid] = PvPSystem.createPlayerHPState();
+                try { ws.send(JSON.stringify({type:'player_hp', id:pid, hp:playersHP[pid].hp, dead:false, killer:''})); } catch(e) {}
+            } else if (pid === MY_ID) {
+                pySetPlayerHp(PVP_MAX_HP, false);
+                const spawn = PvPSystem.spawnPointForId(MY_ID, WORLD_W, WORLD_H);
+                pySetSpawn(spawn.x, spawn.y);
+            }
+            return;
+        }
+    }
+
+    function upsertRemote(id, name, state) {
+        if (!state) return;
+        const existed = !!remotePlayers[id];
+        const old = existed ? remotePlayers[id] : null;
+        let px = state.x, py = state.y, pa = state.angle || 0, lp = 1;
+        if (old && Number.isFinite(old._prevX)) {
+            const k = Math.min(1, old._lerp || 0);
+            px = old._prevX + wrapDelta(old._prevX, old.x, WORLD_W) * k;
+            py = old._prevY + wrapDelta(old._prevY, old.y, WORLD_H) * k;
+            pa = old._prevAngle + normAngleDiff((old.angle || 0) - old._prevAngle) * k;
+            lp = 0;
+        }
+        remotePlayers[id] = {
+            x: state.x, y: state.y, angle: state.angle || 0,
+            dead: !!state.dead,
+            hp: state.hp !== undefined ? state.hp : (remotePlayers[id] && remotePlayers[id].hp) || PVP_MAX_HP,
+            maxHp: state.maxHp !== undefined ? state.maxHp : PVP_MAX_HP,
+            name: name || (remotePlayers[id] && remotePlayers[id].name) || id.slice(0, 6),
+            lastUpdate: performance.now() / 1000,
+            _prevX: px, _prevY: py, _prevAngle: pa, _lerp: lp,
+        };
+        if (!existed) updatePlayerCount();
+    }
+
+    function updatePlayerCount() {
+        const n = Object.keys(remotePlayers).length;
+        document.getElementById('playerCount').textContent =
+            n > 0 ? ` · ${n} other pilot${n === 1 ? '' : 's'} online` : '';
+    }
+
+    function pruneStaleRemotes() {
+        const now = performance.now() / 1000;
+        let changed = false;
+        for (const id in remotePlayers) {
+            if (now - remotePlayers[id].lastUpdate > REMOTE_TIMEOUT) {
+                allKnownIds.delete(id);
+                delete remotePlayers[id];
+                changed = true;
+            }
+        }
+        if (changed) { reelectHost(); updatePlayerCount(); }
+    }
+
+    function sendNetState(dt, st) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        stateSendAccum += dt;
+        if (stateSendAccum < 1 / STATE_SEND_HZ) return;
+        stateSendAccum = 0;
+        ws.send(JSON.stringify({
+            type: 'state', id: MY_ID, name: myName,
+            x: st.px, y: st.py, angle: st.pa,
+            vx: st.pvx, vy: st.pvy, dead: st.dead,
+            hp: st.hp, maxHp: st.max_hp,
+        }));
+    }
+
+    function sendNetShoot(bx, by, bvx, bvy) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: 'shoot', id: MY_ID, x: bx, y: by, vx: bvx, vy: bvy }));
+    }
+
+    connectMultiplayer(wsUrlGuess());
+
+    window.addEventListener('beforeunload', () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: 'leave', id: MY_ID })); } catch (e) {}
+        }
+    });
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function wrapDelta(a,b,size){let d=((b-a)%size+size)%size;if(d>size/2)d-=size;return d;}
+
+    // ── Game loop ─────────────────────────────────────────────────────────
+    let last=Date.now();
+    let rAFLast=0;
+    let lastDead=false;   // for logging local single-player deaths once
+    let lastState=null;   // cached render state, re-sent while the settings pause
+    function loop() {
+        requestAnimationFrame(loop);
+        rAFLast=Date.now();
+        frameTick();
+    }
+    function frameTick() {
+        const now=Date.now(), dt=Math.min((now-last)/1000,0.05); last=now;
+
+        // While the settings overlay is open the game is paused: the world
+        // stays frozen (pyUpdate is skipped) but the last frame is still
+        // re-rendered and our frozen network state keeps flowing so remote
+        // clients don't prune us mid-settings.
+        if (paused) {
+            if (lastState) sendNetState(dt, lastState);
+            return;
+        }
+
+        pySetKey('left',  touch.left<-0.5);
+        pySetKey('right', touch.left>0.5);
+        pySetKey('up',    touch.thrust);
+        pySetKey('space', touch.shoot);
+
+        pyUpdate(dt);
+        const st = pyDraw().toJs({ dict_converter: Object.fromEntries });
+        lastState = st;
+
+        // Log local (single-player / offline) deaths once each time we die.
+        if (st.dead && !lastDead && !(pvpMode && ws && ws.readyState === WebSocket.OPEN)) onLocalDeath();
+        lastDead = st.dead;
+
+        if (st.just_shot) {
+            const [bx, by, bvx, bvy] = st.just_shot;
+            sendNetShoot(bx, by, bvx, bvy);
+        }
+        sendNetState(dt, st);
+        pruneStaleRemotes();
+
+        // Interpolate remote players toward their latest state snapshots.
+        for (const id in remotePlayers) {
+            const rp = remotePlayers[id];
+            if (rp._lerp !== undefined && rp._lerp < 1) rp._lerp = Math.min(1, rp._lerp + dt * STATE_SEND_HZ);
+        }
+
+        // ── PvP combat (issue #10) ─────────────────────────────────────────
+        if (pvpMode && ws && ws.readyState === WebSocket.OPEN) {
+            // My bullets hitting remote players. Only the bullet's owner
+            // reports a hit — the target client must NOT report the same
+            // collision back, or the host would apply the damage twice.
+            for (const [bx, by] of st.pbullets) {
+                for (const id in remotePlayers) {
+                    const rp = remotePlayers[id];
+                    if (rp.dead) continue;
+                    const ip = renderPose(rp);
+                    const rxp = ip ? ip.x : rp.x, ryp = ip ? ip.y : rp.y;
+                    if (PvPSystem.distanceBetween(bx, by, rxp, ryp, WORLD_W, WORLD_H) < PvPSystem.BULLET_HIT_RADIUS) {
+                        reportHit(id, 1, MY_ID);
+                        break;
+                    }
+                }
+            }
+            // My ship ramming remote players (cooldown-gated)
+            if (!st.dead) {
+                for (const id in remotePlayers) {
+                    const rp = remotePlayers[id];
+                    if (rp.dead) continue;
+                    if ((ramCooldowns[id] || 0) > 0) continue;
+                    const ip = renderPose(rp);
+                    const rxp = ip ? ip.x : rp.x, ryp = ip ? ip.y : rp.y;
+                    if (PvPSystem.distanceBetween(st.px, st.py, rxp, ryp, WORLD_W, WORLD_H) < PvPSystem.RAM_HIT_RADIUS) {
+                        reportHit(id, PvPSystem.RAM_DAMAGE, MY_ID);
+                        ramCooldowns[id] = PvPSystem.RAM_COOLDOWN;
+                    }
+                }
+            }
+            for (const id in ramCooldowns) { ramCooldowns[id] -= dt; if (ramCooldowns[id] <= 0) delete ramCooldowns[id]; }
+        }
+
+        const WORLD_W=3200, WORLD_H=2400, VIEW_W=800, VIEW_H=600;
+        const scx=canvas.width/VIEW_W, scy=canvas.height/VIEW_H;
+        const camX=st.px, camY=st.py;
+
+        function w2s(wx,wy){
+            return[(VIEW_W/2+wrapDelta(camX,wx,WORLD_W))*scx,
+                   (VIEW_H/2+wrapDelta(camY,wy,WORLD_H))*scy];
+        }
+        function onScreen(sx,sy,pad=60){
+            return sx>-pad&&sx<canvas.width+pad&&sy>-pad&&sy<canvas.height+pad;
+        }
+
+        // Background
+        ctx.fillStyle='#0c0c18'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+        // Grid
+        ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1; ctx.beginPath();
+        const gs=400;
+        for(let gx=Math.floor((camX-VIEW_W/2)/gs)*gs;gx<=camX+VIEW_W/2+gs;gx+=gs){
+            const px=(VIEW_W/2+wrapDelta(camX,gx,WORLD_W))*scx; ctx.moveTo(px,0); ctx.lineTo(px,canvas.height);
+        }
+        for(let gy=Math.floor((camY-VIEW_H/2)/gs)*gs;gy<=camY+VIEW_H/2+gs;gy+=gs){
+            const py=(VIEW_H/2+wrapDelta(camY,gy,WORLD_H))*scy; ctx.moveTo(0,py); ctx.lineTo(canvas.width,py);
+        }
+        ctx.stroke();
+
+        // Entities
+        // row layout: [x, y, r, kind, angle, hp, maxHp, hitFlash]
+        for(const row of st.entities) {
+            const [ex,ey,er,kind,ang,hp,maxHp,hitFlash]=row;
+            const [sx,sy]=w2s(ex,ey);
+            if(!onScreen(sx,sy)) continue;
+
+            const fl = Math.min(1, Math.max(0, (hitFlash||0) / 0.15));
+            function flashColor(base) {
+                const r=parseInt(base.slice(1,3),16);
+                const g=parseInt(base.slice(3,5),16);
+                const b=parseInt(base.slice(5,7),16);
+                return `rgb(${Math.round(r+(255-r)*fl)},${Math.round(g+(255-g)*fl)},${Math.round(b+(255-b)*fl)})`;
+            }
+
+            if(kind==='circle'){
+                ctx.fillStyle=flashColor('#c87878');
+                ctx.beginPath(); ctx.arc(sx,sy,er*scx,0,Math.PI*2); ctx.fill();
+            } else if(kind==='shooter'){
+                ctx.fillStyle=flashColor('#f0a050');
+                ctx.strokeStyle=fl>0.1?'#ffffff':'#ffcc80'; ctx.lineWidth=1;
+                const s=er*scx;
+                const h=[Math.cos(ang),Math.sin(ang)];
+                const rv=[Math.cos(ang+2.3),Math.sin(ang+2.3)];
+                const l=[Math.cos(ang-2.3),Math.sin(ang-2.3)];
+                ctx.beginPath();
+                ctx.moveTo(sx+h[0]*s*1.2,sy+h[1]*s*1.2);
+                ctx.lineTo(sx+rv[0]*s*0.9,sy+rv[1]*s*0.9);
+                ctx.lineTo(sx+l[0]*s*0.9,sy+l[1]*s*0.9);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+            } else {
+                ctx.fillStyle=flashColor('#9b59b6');
+                ctx.strokeStyle=fl>0.1?'#ffffff':'#c39bd3'; ctx.lineWidth=1.5;
+                const s=er*scx;
+                ctx.save(); ctx.translate(sx,sy); ctx.rotate(Math.PI/4);
+                ctx.fillRect(-s,-s,s*2,s*2); ctx.strokeRect(-s,-s,s*2,s*2);
+                ctx.restore();
+            }
+
+            // Health bar (only when damaged and maxHp > 1)
+            if(maxHp>1 && hp<maxHp){
+                const barW=er*2*scx, barH=4*scx;
+                const bx=sx-barW/2, by=sy-er*scx-8*scx;
+                ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(bx,by,barW,barH);
+                const frac=hp/maxHp;
+                ctx.fillStyle=`hsl(${Math.round(frac*110)},80%,50%)`;
+                ctx.fillRect(bx,by,barW*frac,barH);
+            }
+        }
+
+        // Enemy bullets
+        ctx.fillStyle='#ff6040';
+        for(const [bx,by] of st.ebullets){
+            const [sx,sy]=w2s(bx,by);
+            if(!onScreen(sx,sy,20)) continue;
+            ctx.beginPath(); ctx.arc(sx,sy,4*scx,0,Math.PI*2); ctx.fill();
+        }
+
+        // Player bullets
+        ctx.fillStyle='#fff078';
+        for(const [bx,by] of st.pbullets){
+            const [sx,sy]=w2s(bx,by);
+            ctx.beginPath(); ctx.arc(sx,sy,3*scx,0,Math.PI*2); ctx.fill();
+        }
+
+        // Remote players' bullets (cosmetic; decay locally in JS)
+        remoteBullets = remoteBullets.filter(b => {
+            b.x = ((b.x + b.vx*dt) % WORLD_W + WORLD_W) % WORLD_W;
+            b.y = ((b.y + b.vy*dt) % WORLD_H + WORLD_H) % WORLD_H;
+            b.life -= dt;
+            return b.life > 0;
+        });
+        ctx.fillStyle='#90f0a0';
+        for (const b of remoteBullets) {
+            const [sx,sy]=w2s(b.x,b.y);
+            if(!onScreen(sx,sy,20)) continue;
+            ctx.beginPath(); ctx.arc(sx,sy,3*scx,0,Math.PI*2); ctx.fill();
+        }
+
+        // Remote players (other people in the same game)
+        for (const id in remotePlayers) {
+            const rp = remotePlayers[id];
+            if (rp.dead) continue;
+            const ip=renderPose(rp);
+            const rxp=ip?ip.x:rp.x;
+            const ryp=ip?ip.y:rp.y;
+            const rap=ip?ip.a:(rp.angle||0);
+            const [rx,ry]=w2s(rxp,ryp);
+            if(!onScreen(rx,ry)) continue;
+            ctx.fillStyle='#7fdc8f';
+            const h=[Math.cos(rap),Math.sin(rap)];
+            const r=[Math.cos(rap+2.5),Math.sin(rap+2.5)];
+            const l=[Math.cos(rap-2.5),Math.sin(rap-2.5)];
+            const s=12*scx;
+            ctx.beginPath();
+            ctx.moveTo(rx+h[0]*s,ry+h[1]*s);
+            ctx.lineTo(rx+r[0]*s*0.7,ry+r[1]*s*0.7);
+            ctx.lineTo(rx+l[0]*s*0.7,ry+l[1]*s*0.7);
+            ctx.closePath(); ctx.fill();
+            if (pvpMode && rp.maxHp > 0) {
+                const bw=22*scx, bh=3*scx, bx2=rx-bw/2, by2=ry-26*scx;
+                ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(bx2,by2,bw,bh);
+                const frac=Math.max(0,Math.min(1,(rp.hp!==undefined?rp.hp:rp.maxHp)/rp.maxHp));
+                ctx.fillStyle=`hsl(${Math.round(frac*110)},80%,50%)`; ctx.fillRect(bx2,by2,bw*frac,bh);
+            }
+            ctx.fillStyle='#9fe0a8'; ctx.font='11px monospace'; ctx.textAlign='center';
+            ctx.fillText(rp.name || id.slice(0,6), rx, ry - 18*scx);
+        }
+
+        // Player ship
+        if(!st.dead){
+            const [px,py]=w2s(st.px,st.py);
+            ctx.fillStyle='#b4c8ff';
+            const ang=st.pa; const s=12*scx;
+            const h=[Math.cos(ang),Math.sin(ang)];
+            const r=[Math.cos(ang+2.5),Math.sin(ang+2.5)];
+            const l=[Math.cos(ang-2.5),Math.sin(ang-2.5)];
+            ctx.beginPath();
+            ctx.moveTo(px+h[0]*s,py+h[1]*s);
+            ctx.lineTo(px+r[0]*s*0.7,py+r[1]*s*0.7);
+            ctx.lineTo(px+l[0]*s*0.7,py+l[1]*s*0.7);
+            ctx.closePath(); ctx.fill();
+        }
+
+        // HUD
+        document.getElementById('score').textContent=st.score;
+        const hpEl=document.getElementById('hpValue');
+        if(hpEl) hpEl.textContent=`${Math.max(0,st.hp||0)}/${st.max_hp||0}`;
+        document.getElementById('deadMsg').style.display=st.dead?'block':'none';
+        if(st.dead) document.getElementById('restartBtn').style.display='block';
+        killFeed = killFeed.filter(k=>k.t>0);
+        const kfEl=document.getElementById('killFeed');
+        if(kfEl){
+            kfEl.innerHTML=killFeed.slice(-4).map(k=>
+                `<div>${playerDisplayName(k.killer)} <span style="color:#f07070">killed</span> ${playerDisplayName(k.target)}</div>`
+            ).join('');
+        }
+        for(const k of killFeed) k.t-=dt;
+
+        // Minimap
+        const mw=mm.width, mh=mm.height;
+        const mmscx=mw/WORLD_W, mmscy=mh/WORLD_H;
+        mctx.fillStyle='rgba(10,10,20,0.92)'; mctx.fillRect(0,0,mw,mh);
+        for(const [ex,ey,,kind] of st.entities) {
+            const mx=ex*mmscx, my=ey*mmscy;
+            if(kind==='circle'){ mctx.fillStyle='rgba(200,120,120,0.75)'; mctx.fillRect(mx-1,my-1,2,2); }
+            else if(kind==='shooter'){ mctx.fillStyle='#f0a050'; mctx.fillRect(mx-1,my-1,3,3); }
+            else { mctx.fillStyle='#b07fe0'; mctx.fillRect(mx-2,my-2,4,4); }
+        }
+        if(!st.dead){
+            mctx.fillStyle='#b4c8ff'; mctx.beginPath();
+            mctx.arc(st.px*mmscx,st.py*mmscy,3,0,Math.PI*2); mctx.fill();
+        }
+        mctx.fillStyle='#7fdc8f';
+        for (const id in remotePlayers) {
+            const rp = remotePlayers[id];
+            if (rp.dead) continue;
+            const ip=renderPose(rp);
+            const rxp=ip?ip.x:rp.x;
+            const ryp=ip?ip.y:rp.y;
+            mctx.beginPath();
+            mctx.arc(rxp*mmscx, ryp*mmscy, 2.5, 0, Math.PI*2);
+            mctx.fill();
+        }
+        mctx.strokeStyle='rgba(255,255,255,0.65)'; mctx.lineWidth=1;
+        const mvx=(camX-VIEW_W/2)*mmscx,mvy=(camY-VIEW_H/2)*mmscy,mvw=VIEW_W*mmscx,mvh=VIEW_H*mmscy;
+        for(let ox=-mw;ox<=mw;ox+=mw)for(let oy=-mh;oy<=mh;oy+=mh)mctx.strokeRect(mvx+ox,mvy+oy,mvw,mvh);
+        mctx.strokeStyle='rgba(255,255,255,0.18)'; mctx.strokeRect(0,0,mw,mh);
+    }
+    // Watchdog: browsers stop firing requestAnimationFrame on hidden/background
+    // tabs, which freezes the game loop and stops the network heartbeat other
+    // players rely on. setInterval is throttled to ~1 Hz in hidden tabs, so we
+    // drive the fallback from a tiny Web Worker (worker timers are NOT
+    // throttled in hidden tabs) and keep a plain setInterval as a last resort.
+    function startHeartbeat(){
+        try{
+            const wb=new Blob(['setInterval(function(){self.postMessage("tick");},33);']);
+            const worker=new Worker(URL.createObjectURL(wb));
+            worker.onmessage=()=>{if(Date.now()-rAFLast>250)frameTick();};
+            if(worker){window.__hbWorker=worker;return;}
+        }catch(e){}
+        setInterval(()=>{if(Date.now()-rAFLast>250)frameTick();},1000/30);
+    }
+    startHeartbeat();
+    loop();
+
+    // Debug/test hook (mirrors the web build's top-level globals).
+    window.__pyodideDebug = {
+        get remotePlayers() { return remotePlayers; },
+        get netState() { return netState; },
+        renderPose,
+        upsertRemote,
+        wrapDelta,
+    };
+}
+main().catch(err=>{ document.getElementById('loading').innerHTML='Error: '+err.message; });
+</script>
+</body>
+</html>
