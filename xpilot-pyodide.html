@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- web-server.py substitutes this at request time from the XPILOT_WS_URL env var.
+         Left as-is (unsubstituted), the client falls back to the legacy same-host:8765 guess,
+         which keeps `python web-server.py` + `python ws_server.py` local/LAN dev unchanged. -->
+    <meta name="xpilot-ws-url" content="__XPILOT_WS_URL__">
     <title>XPilot - Pyodide</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -697,6 +701,11 @@ def draw():
     }
 
     function wsUrlGuess() {
+        const override = new URLSearchParams(location.search).get('ws');
+        if (override) return override;
+        const meta = document.querySelector('meta[name="xpilot-ws-url"]');
+        const injected = meta && meta.content;
+        if (injected && (injected.indexOf('ws://') === 0 || injected.indexOf('wss://') === 0)) return injected;
         const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = location.hostname || 'localhost';
         return `${proto}//${host}:8765`;

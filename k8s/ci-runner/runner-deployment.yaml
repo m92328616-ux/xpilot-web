@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-runner
+  namespace: ci
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: github-runner
+  template:
+    metadata:
+      labels:
+        app: github-runner
+    spec:
+      serviceAccountName: xpilot-deployer
+      containers:
+        - name: runner
+          image: myoung34/github-runner:latest
+          env:
+            - name: RUNNER_SCOPE
+              value: "repo"
+            - name: REPO_URL
+              value: "https://github.com/m92328616-ux/xpilot-webnet"
+            - name: RUNNER_NAME
+              value: "xpilot-k3s-runner"
+            - name: RUNNER_WORKDIR
+              value: "/tmp/runner/work"
+            - name: LABELS
+              value: "self-hosted,k3s-oci,xpilot"
+            - name: DISABLE_RUNNER_UPDATE
+              value: "false"
+            - name: ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: github-runner-pat
+                  key: access-token
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: work
+              mountPath: /tmp/runner/work
+      volumes:
+        - name: work
+          emptyDir: {}

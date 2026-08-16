@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ws-server
+  namespace: xpilot
+  labels:
+    app: xpilot
+    component: ws-server
+spec:
+  selector:
+    app: xpilot
+    component: ws-server
+  ports:
+    - name: ws
+      port: 8765
+      targetPort: ws

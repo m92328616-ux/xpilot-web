@@ -1,0 +1,28 @@
+# Fixes "hairpin NAT": cert-manager's HTTP-01 self-check runs from a pod
+# inside the cluster and tries to reach the domain's *public* IP, which
+# then has to loop back into the same cluster -- many networks can't route
+# that correctly, causing the self-check to time out forever even though
+# everything else is configured right.
+#
+# Makes CoreDNS answer queries for xpilot.spdns.eu from *inside* the
+# cluster with Traefik's own ClusterIP directly. External users still
+# resolve the real public IP via normal public DNS -- this only affects
+# resolution from within the cluster's own pod network.
+#
+# IMPORTANT: 10.43.195.153 is Traefik's ClusterIP as of this writing --
+# confirm it hasn't changed (`kubectl get svc traefik -n kube-system -o
+# jsonpath='{.spec.clusterIP}'`) before reapplying after any Traefik
+# reinstall.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  xpilot.server: |
+    xpilot.spdns.eu:53 {
+      hosts {
+        10.43.195.153 xpilot.spdns.eu
+        fallthrough
+      }
+    }

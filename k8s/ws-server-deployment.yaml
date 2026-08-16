@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ws-server
+  namespace: xpilot
+  labels:
+    app: xpilot
+    component: ws-server
+spec:
+  # ws_server.py keeps all connected players in an in-memory dict
+  # (CLIENTS). It is NOT horizontally scalable as written -- two replicas
+  # would silently split players into two separate, unaware relay rooms.
+  replicas: 1
+  strategy:
+    # Kill the old pod before starting the new one, to avoid a brief
+    # window where two relay pods are both live behind the same Service.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: xpilot
+      component: ws-server
+  template:
+    metadata:
+      labels:
+        app: xpilot
+        component: ws-server
+    spec:
+      containers:
+        - name: ws-server
+          image: omnom62/xpilot-webnet:latest
+          imagePullPolicy: Always
+          args:
+            - ws_server.py
+            - --host=0.0.0.0
+            - --port=8765
+            - --http-port=8766
+          ports:
+            - name: ws
+              containerPort: 8765
+            - name: status
+              containerPort: 8766
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: status
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: status
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi

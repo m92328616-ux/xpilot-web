@@ -1,0 +1,50 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: xpilot
+  namespace: xpilot
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik # resolved by k8s/ingressclass.yaml
+  tls:
+    - hosts:
+        - xpilot.spdns.eu
+      secretName: xpilot-tls
+  rules:
+    - # No host: -- keeps the direct IP:8888 access path working
+      # (150.230.10.165:8888 -> listener_xpilot -> node IPs port 80 ->
+      # Traefik), alongside the domain-based rule below.
+      http:
+        paths:
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: ws-server
+                port:
+                  name: ws
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-server
+                port:
+                  name: http
+    - host: xpilot.spdns.eu
+      http:
+        paths:
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service:
+                name: ws-server
+                port:
+                  name: ws
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web-server
+                port:
+                  name: http

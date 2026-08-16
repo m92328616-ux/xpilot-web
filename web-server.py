@@ -44,6 +44,14 @@ SERVE_DIR = os.path.dirname(__file__)
 HTTPS_ENABLED = False
 BOUND_PORT = None
 
+# If set, this is substituted into xpilot-web.html / xpilot-pyodide.html in
+# place of the __XPILOT_WS_URL__ placeholder, so the client connects to a
+# known WebSocket URL (e.g. "wss://xpilot.spdns.eu/ws" behind a single
+# ingress) instead of guessing same-host:8765. Unset -> placeholder is left
+# alone -> client falls back to its legacy same-host:8765 guess, which is
+# what local/LAN dev (`python web-server.py` + `python ws_server.py`) needs.
+WS_URL = os.environ.get("XPILOT_WS_URL", "")
+
 
 class ReusableTCPServer(socketserver.TCPServer):
     """TCPServer that sets SO_REUSEADDR so the port frees up on restart."""
@@ -99,12 +107,16 @@ class GameHTTPHandler(http.server.SimpleHTTPRequestHandler):
         if self.path in ['/xpilot-web.html', '/xpilot-pyodide.html']:
             file_path = os.path.join(SERVE_DIR, self.path.lstrip('/'))
             if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    body = f.read()
+                if WS_URL:
+                    body = body.replace(b'__XPILOT_WS_URL__', WS_URL.encode('utf8'), 1)
                 self.send_response(200)
                 self.send_header('Content-type', 'text/html')
                 self.send_header('Access-Control-Allow-Origin', '*')
+                self.send_header('Content-Length', str(len(body)))
                 self.end_headers()
-                with open(file_path, 'rb') as f:
-                    self.wfile.write(f.read())
+                self.wfile.write(body)
                 return
 
         if self.path == '/status':
